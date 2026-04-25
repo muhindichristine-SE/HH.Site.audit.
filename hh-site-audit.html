@@ -940,7 +940,12 @@ const S = {
   projects: (function() {
     var stored = JSON.parse(localStorage.getItem('hh_projects') || '[]');
     var hasSeeded = stored.some(function(p){ return p._seeded === 'NSE_2026_04_23'; });
-    return hasSeeded ? stored : [HH_SEED_PROJECT].concat(stored);
+    if (!hasSeeded) {
+      // First visit — write seed into localStorage so all edits persist from now on
+      stored = [HH_SEED_PROJECT].concat(stored);
+      try { localStorage.setItem('hh_projects', JSON.stringify(stored)); } catch(e) {}
+    }
+    return stored;
   })(),
   proj: null, photo: null, gps: null,
   isRecording: false, recognition: null,
