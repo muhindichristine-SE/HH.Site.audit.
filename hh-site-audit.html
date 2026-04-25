@@ -353,9 +353,16 @@
       <button class="tab" onclick="switchHomeTab('meetings', this)">🎙 Meetings</button>
     </div>
     <div id="homeTabProjects">
-      <div style="display:flex;gap:10px;margin-bottom:20px;">
+      <div style="display:flex;gap:10px;margin-bottom:12px;">
         <button class="btn btn-primary" style="flex:1;" onclick="showProjectTypeModal()">📋 Site Audit</button>
         <button class="btn" style="flex:1;background:var(--hh-purple-dark,#2a1e62);color:#fff;border-radius:var(--radius);font-weight:600;font-size:14px;border:none;cursor:pointer;" onclick="showScreen('screenNewRecon')">🔍 Pre-Bid Recon</button>
+      </div>
+      <div style="display:flex;gap:10px;margin-bottom:20px;">
+        <button class="btn btn-secondary" style="flex:1;font-size:13px;" onclick="exportBackup()">💾 Backup Data</button>
+        <label class="btn btn-secondary" style="flex:1;font-size:13px;text-align:center;cursor:pointer;">
+          📂 Restore Data
+          <input type="file" accept=".json" id="restoreInput" style="display:none;" onchange="importBackup(event)">
+        </label>
       </div>
       <div id="projectList"></div>
     </div>
@@ -962,6 +969,47 @@ function save() {
   saveToCloud();
 }
 function saveMeetings() { localStorage.setItem('hh_meetings', JSON.stringify(M_STATE.meetings)); }
+
+// ── BACKUP / RESTORE ──────────────────────────────────────
+function exportBackup() {
+  try {
+    var data = {
+      version: 1,
+      exported: new Date().toISOString(),
+      projects: S.projects,
+      meetings: M_STATE.meetings
+    };
+    var blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'HH_Audit_Backup_' + new Date().toISOString().slice(0,10) + '.json';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    toast('✅ Backup downloaded');
+  } catch(e) { toast('⚠ Backup failed'); }
+}
+
+function importBackup(evt) {
+  var file = evt.target.files[0];
+  if (!file) return;
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      var data = JSON.parse(e.target.result);
+      if (!data.projects || !Array.isArray(data.projects)) { toast('⚠ Invalid backup file'); return; }
+      S.projects = data.projects;
+      if (data.meetings) M_STATE.meetings = data.meetings;
+      localStorage.setItem('hh_projects', JSON.stringify(S.projects));
+      localStorage.setItem('hh_meetings', JSON.stringify(M_STATE.meetings));
+      renderHome();
+      toast('✅ Data restored — ' + S.projects.length + ' projects loaded');
+    } catch(e) { toast('⚠ Could not read backup file'); }
+  };
+  reader.readAsText(file);
+  // Reset input so same file can be selected again
+  evt.target.value = '';
+}
 
 // ── GOOGLE DRIVE SYNC ─────────────────────────────────────
 async function saveToCloud() {
