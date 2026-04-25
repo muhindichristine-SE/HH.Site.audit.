@@ -2355,6 +2355,355 @@ function renderReconSummary() {
     '</div>';
 }
 
+// ════════════════════════════════════════════════════════════════
+// SWITCH RECON TAB
+// ════════════════════════════════════════════════════════════════
+function switchReconTab(tab, btn) {
+  document.querySelectorAll('#screenReconProject .tab').forEach(function(b) { b.classList.remove('active'); });
+  btn.classList.add('active');
+  var tabObs = document.getElementById('tabObs');
+  var tabCL = document.getElementById('tabChecklist');
+  var tabSum = document.getElementById('tabReconSummary');
+  if (tabObs) tabObs.style.display = tab === 'obs' ? 'block' : 'none';
+  if (tabCL) tabCL.style.display = tab === 'checklist' ? 'block' : 'none';
+  if (tabSum) tabSum.style.display = tab === 'summary' ? 'block' : 'none';
+  if (tab === 'checklist') renderChecklist();
+  if (tab === 'summary') renderReconSummary();
+}
+
+// ════════════════════════════════════════════════════════════════
+// EDIT OBSERVATION
+// ════════════════════════════════════════════════════════════════
+var editObsIdx = null;
+var editObsPhoto = null;
+var editObsComplexity = 'Medium';
+
+function openEditObs(idx) {
+  var obs = _activeObs()[idx];
+  if (!obs) return;
+  editObsIdx = idx;
+  editObsPhoto = obs.photo || null;
+  editObsComplexity = obs.complexity || 'Medium';
+  function safeSet(id, val) { var el = document.getElementById(id); if (el) el.value = val || ''; }
+  safeSet('edit_section', obs.section);
+  safeSet('edit_category', obs.category);
+  safeSet('edit_width', obs.width);
+  safeSet('edit_terrain', obs.terrain);
+  safeSet('edit_title', obs.title);
+  safeSet('edit_desc', obs.description);
+  safeSet('edit_implication', obs.implication);
+  safeSet('edit_complexity', obs.complexity);
+  setEditComplexity(obs.complexity || 'Medium');
+  var prev = document.getElementById('editPhotoPreview');
+  var noPhoto = document.getElementById('editNoPhoto');
+  var chip = document.getElementById('editGpsChip');
+  if (obs.photo) {
+    if (prev) { prev.src = obs.photo; prev.style.display = 'block'; }
+    if (noPhoto) noPhoto.style.display = 'none';
+  } else {
+    if (prev) prev.style.display = 'none';
+    if (noPhoto) noPhoto.style.display = 'flex';
+  }
+  if (chip) chip.textContent = obs.gps ? '📍 ' + obs.gps.lat.toFixed(5) + '°, ' + obs.gps.lng.toFixed(5) + '°' : '📍 No GPS recorded';
+  showScreen('screenEditObs');
+}
+
+function cancelEditObs() {
+  editObsIdx = null;
+  showScreen('screenReconProject');
+}
+
+function setEditComplexity(level) {
+  editObsComplexity = level;
+  var el = document.getElementById('edit_complexity');
+  if (el) el.value = level;
+  ['Low','Med','High'].forEach(function(l) {
+    var btn = document.getElementById('editCx' + l);
+    if (btn) btn.style.opacity = '0.4';
+  });
+  var map = {Low:'editCxLow', Medium:'editCxMed', High:'editCxHigh'};
+  var active = document.getElementById(map[level]);
+  if (active) active.style.opacity = '1';
+}
+
+function startEditCamera() {
+  var input = document.createElement('input');
+  input.type = 'file'; input.accept = 'image/*';
+  input.onchange = function(evt) {
+    var file = evt.target.files[0];
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      editObsPhoto = e.target.result;
+      var prev = document.getElementById('editPhotoPreview');
+      var noPhoto = document.getElementById('editNoPhoto');
+      if (prev) { prev.src = editObsPhoto; prev.style.display = 'block'; }
+      if (noPhoto) noPhoto.style.display = 'none';
+    };
+    reader.readAsDataURL(file);
+  };
+  input.click();
+}
+
+function saveEditedObservation() {
+  var titleEl = document.getElementById('edit_title');
+  var title = titleEl ? titleEl.value.trim() : '';
+  if (!title) { toast('Title required'); return; }
+  var obs = _activeObs()[editObsIdx];
+  if (!obs) return;
+  obs.section = (document.getElementById('edit_section')||{}).value || obs.section;
+  obs.category = (document.getElementById('edit_category')||{}).value || obs.category;
+  obs.width = (document.getElementById('edit_width')||{}).value || '';
+  obs.terrain = (document.getElementById('edit_terrain')||{}).value || '';
+  obs.title = title;
+  obs.description = ((document.getElementById('edit_desc')||{}).value || '').trim();
+  obs.implication = ((document.getElementById('edit_implication')||{}).value || '').trim();
+  obs.complexity = editObsComplexity;
+  if (editObsPhoto) obs.photo = editObsPhoto;
+  obs.edited = new Date().toISOString();
+  try { save(); } catch(e) {}
+  showScreen('screenReconProject');
+  renderObsList();
+  toast(obs.obsNo + ' updated');
+}
+
+function deleteObservation() {
+  var obs = _activeObs()[editObsIdx];
+  if (!obs) return;
+  var p = S.projects[currentReconIdx];
+  var day = p.days[p.activeDayIdx];
+  day.observations.splice(editObsIdx, 1);
+  var counter = 1;
+  p.days.forEach(function(d) {
+    d.observations.forEach(function(o) {
+      o.obsNo = 'OBS-' + String(counter).padStart(2,'0');
+      counter++;
+    });
+  });
+  try { save(); } catch(e) {}
+  showScreen('screenReconProject');
+  renderObsList();
+  toast('Observation deleted');
+}
+
+// ════════════════════════════════════════════════════════════════
+// ANNOTATE PHOTO
+// ════════════════════════════════════════════════════════════════
+var annTool = 'arrow', annColor = '#e53935';
+var annDrawing = false, annStartX = 0, annStartY = 0;
+var annHistory = [], annBaseImage = null;
+var annCanvasEl = null, annCtxEl = null;
+
+function openAnnotateEdit() {
+  var src = editObsPhoto || '';
+  var prevEl = document.getElementById('editPhotoPreview');
+  if (prevEl && prevEl.src && prevEl.src.length > 10) src = prevEl.src;
+  if (!src || src.length < 10) { toast('No photo to annotate'); return; }
+  var modal = document.getElementById('annotateEditModal');
+  if (!modal) return;
+  modal.style.display = 'flex';
+  annCanvasEl = document.getElementById('annotateCanvas');
+  if (!annCanvasEl) return;
+  annCtxEl = annCanvasEl.getContext('2d');
+  annHistory = []; annTool = 'arrow'; annColor = '#e53935';
+  var img = new Image();
+  img.onload = function() {
+    annCanvasEl.width = img.width;
+    annCanvasEl.height = img.height;
+    annCtxEl.drawImage(img, 0, 0);
+    annBaseImage = annCtxEl.getImageData(0, 0, annCanvasEl.width, annCanvasEl.height);
+  };
+  img.src = src;
+  setupAnnEvents();
+}
+
+function closeAnnotateEdit() {
+  var modal = document.getElementById('annotateEditModal');
+  if (modal) modal.style.display = 'none';
+}
+
+function saveAnnotation() {
+  if (!annCanvasEl) return;
+  editObsPhoto = annCanvasEl.toDataURL('image/jpeg', 0.9);
+  var prev = document.getElementById('editPhotoPreview');
+  if (prev) { prev.src = editObsPhoto; prev.style.display = 'block'; }
+  closeAnnotateEdit();
+  toast('Annotation saved');
+}
+
+function setAnnTool(tool) {
+  annTool = tool;
+  ['annArrow','annCircle','annText'].forEach(function(id) {
+    var btn = document.getElementById(id);
+    if (btn) { btn.style.background = 'none'; btn.style.border = '1px solid #555'; }
+  });
+  var map = {arrow:'annArrow', circle:'annCircle', text:'annText'};
+  var btn = document.getElementById(map[tool]);
+  if (btn) { btn.style.background = '#3d2c8d'; btn.style.border = 'none'; }
+}
+
+function setAnnColor(color) { annColor = color; }
+
+function undoAnnotation() {
+  if (!annCtxEl || !annBaseImage) return;
+  annCtxEl.putImageData(annBaseImage, 0, 0);
+}
+
+function setupAnnEvents() {
+  if (!annCanvasEl) return;
+  annCanvasEl.onmousedown = annStart;
+  annCanvasEl.onmousemove = annMove;
+  annCanvasEl.onmouseup = annEnd;
+  annCanvasEl.ontouchstart = function(e) { e.preventDefault(); if(e.touches[0]) annStart(e.touches[0]); };
+  annCanvasEl.ontouchmove = function(e) { e.preventDefault(); if(e.touches[0]) annMove(e.touches[0]); };
+  annCanvasEl.ontouchend = annEnd;
+}
+
+function annGetPos(evt) {
+  var rect = annCanvasEl.getBoundingClientRect();
+  return {
+    x: (evt.clientX - rect.left) * (annCanvasEl.width / rect.width),
+    y: (evt.clientY - rect.top) * (annCanvasEl.height / rect.height)
+  };
+}
+
+function annStart(evt) {
+  annDrawing = true;
+  if (annBaseImage) annCtxEl.putImageData(annBaseImage, 0, 0);
+  annBaseImage = annCtxEl.getImageData(0, 0, annCanvasEl.width, annCanvasEl.height);
+  var pos = annGetPos(evt);
+  annStartX = pos.x; annStartY = pos.y;
+  if (annTool === 'text') {
+    var txt = window.prompt('Enter text:');
+    if (txt) {
+      annCtxEl.font = 'bold ' + Math.round(annCanvasEl.width/20) + 'px Arial';
+      annCtxEl.fillStyle = annColor;
+      annCtxEl.fillText(txt, pos.x, pos.y);
+    }
+    annDrawing = false;
+  }
+}
+
+function annMove(evt) {
+  if (!annDrawing || annTool === 'text') return;
+  annCtxEl.putImageData(annBaseImage, 0, 0);
+  var pos = annGetPos(evt);
+  annCtxEl.strokeStyle = annColor;
+  annCtxEl.fillStyle = annColor;
+  annCtxEl.lineWidth = Math.max(2, Math.round(annCanvasEl.width/150));
+  annCtxEl.lineCap = 'round';
+  if (annTool === 'arrow') {
+    annCtxEl.beginPath();
+    annCtxEl.moveTo(annStartX, annStartY);
+    annCtxEl.lineTo(pos.x, pos.y);
+    annCtxEl.stroke();
+    var angle = Math.atan2(pos.y - annStartY, pos.x - annStartX);
+    var hs = Math.round(annCanvasEl.width/40);
+    annCtxEl.beginPath();
+    annCtxEl.moveTo(pos.x, pos.y);
+    annCtxEl.lineTo(pos.x - hs*Math.cos(angle-Math.PI/6), pos.y - hs*Math.sin(angle-Math.PI/6));
+    annCtxEl.lineTo(pos.x - hs*Math.cos(angle+Math.PI/6), pos.y - hs*Math.sin(angle+Math.PI/6));
+    annCtxEl.closePath();
+    annCtxEl.fill();
+  } else if (annTool === 'circle') {
+    var rx = Math.abs(pos.x - annStartX)/2;
+    var ry = Math.abs(pos.y - annStartY)/2;
+    annCtxEl.beginPath();
+    annCtxEl.ellipse((annStartX+pos.x)/2, (annStartY+pos.y)/2, rx||1, ry||1, 0, 0, Math.PI*2);
+    annCtxEl.stroke();
+  }
+}
+
+function annEnd() { annDrawing = false; }
+
+// ════════════════════════════════════════════════════════════════
+// VOICE INPUT + AI CLEANUP
+// ════════════════════════════════════════════════════════════════
+var voiceRecognition = null;
+var voiceActiveField = null;
+
+function startVoiceInput(fieldId, type, btnId) {
+  if (voiceActiveField === fieldId && voiceRecognition) { voiceRecognition.stop(); return; }
+  if (voiceRecognition) voiceRecognition.stop();
+  var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) { toast('Voice not supported. Try Chrome.'); return; }
+  voiceActiveField = fieldId;
+  var btn = document.getElementById(btnId);
+  var statusId = 'status' + btnId.replace('mic','');
+  var statusEl = document.getElementById(statusId);
+  if (btn) btn.classList.add('recording');
+  if (statusEl) statusEl.textContent = '🎙 Listening… speak now';
+  voiceRecognition = new SR();
+  voiceRecognition.continuous = false;
+  voiceRecognition.interimResults = false;
+  voiceRecognition.lang = 'en-KE';
+  voiceRecognition.onresult = function(evt) {
+    var transcript = evt.results[0][0].transcript;
+    if (statusEl) statusEl.textContent = '⏳ Cleaning up…';
+    _cleanWithAI(transcript, type, fieldId, statusEl);
+  };
+  voiceRecognition.onerror = function(evt) {
+    if (btn) btn.classList.remove('recording');
+    if (statusEl) statusEl.textContent = '⚠ Could not hear — try again';
+  };
+  voiceRecognition.onend = function() {
+    if (btn) btn.classList.remove('recording');
+    voiceRecognition = null;
+  };
+  voiceRecognition.start();
+}
+
+async function _cleanWithAI(rawText, type, fieldId, statusEl) {
+  var prompts = {
+    title: 'Convert this rough field note into a concise professional engineering observation title (max 10 words, title case): "' + rawText + '"',
+    description: 'Convert this rough spoken field note into a professional engineering site observation (2-3 sentences, formal, present tense): "' + rawText + '"',
+    implication: 'Convert this into a professional bid implication for a road engineering proposal (1-2 sentences): "' + rawText + '"'
+  };
+  try {
+    var res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({model:'claude-sonnet-4-20250514', max_tokens:200,
+        messages:[{role:'user', content:prompts[type]||prompts.description}]})
+    });
+    var data = await res.json();
+    var cleaned = (data.content&&data.content[0] ? data.content[0].text.trim() : rawText).replace(/^["']|["']$/g,'');
+    var el = document.getElementById(fieldId);
+    if (el) el.value = cleaned;
+    if (statusEl) statusEl.textContent = '✅ Done — edit if needed';
+    setTimeout(function(){if(statusEl)statusEl.textContent='';}, 3000);
+  } catch(e) {
+    var el = document.getElementById(fieldId);
+    if (el) el.value = rawText;
+    if (statusEl) statusEl.textContent = '✅ Transcribed';
+    setTimeout(function(){if(statusEl)statusEl.textContent='';}, 3000);
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
+// PDF EXPORT
+// ════════════════════════════════════════════════════════════════
+function _exportPDF(htmlContent, filename) {
+  toast('⏳ Opening print dialog for PDF…');
+  var iframe = document.createElement('iframe');
+  iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:none;';
+  document.body.appendChild(iframe);
+  iframe.contentDocument.open();
+  iframe.contentDocument.write(htmlContent);
+  iframe.contentDocument.close();
+  iframe.onload = function() {
+    setTimeout(function() {
+      try {
+        iframe.contentWindow.focus();
+        iframe.contentWindow.print();
+        toast('✅ Save as PDF in the print dialog');
+      } catch(e) { toast('Use Word export and save as PDF'); }
+      setTimeout(function(){document.body.removeChild(iframe);}, 3000);
+    }, 800);
+  };
+}
+
+
 function setCheckObs(ref, val) {
   var cl = _getChecklist();
   var key = 'item_' + ref;
