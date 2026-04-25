@@ -951,7 +951,7 @@ const S = {
     var stored = JSON.parse(localStorage.getItem('hh_projects') || '[]');
     var hasSeeded = stored.some(function(p){ return p._seeded === 'NSE_2026_04_23'; });
     if (!hasSeeded) {
-      // First visit — write seed into localStorage so all edits persist from now on
+      // No seed in localStorage — Chrome likely cleared it. Restore from HTML seed.
       stored = [HH_SEED_PROJECT].concat(stored);
       try { localStorage.setItem('hh_projects', JSON.stringify(stored)); } catch(e) {}
     }
@@ -965,7 +965,13 @@ const S = {
 };
 
 function save() {
-  localStorage.setItem('hh_projects', JSON.stringify(S.projects));
+  try {
+    localStorage.setItem('hh_projects', JSON.stringify(S.projects));
+  } catch(e) {
+    if (e.name === 'QuotaExceededError') {
+      toast('⚠ Storage full — tap Backup Data now');
+    }
+  }
   saveToCloud();
 }
 function saveMeetings() { localStorage.setItem('hh_meetings', JSON.stringify(M_STATE.meetings)); }
@@ -973,11 +979,12 @@ function saveMeetings() { localStorage.setItem('hh_meetings', JSON.stringify(M_S
 // ── BACKUP / RESTORE ──────────────────────────────────────
 function exportBackup() {
   try {
+    // Always use S.projects from memory — it is always current even if localStorage was cleared
     var data = {
       version: 1,
       exported: new Date().toISOString(),
       projects: S.projects,
-      meetings: M_STATE.meetings
+      meetings: M_STATE ? M_STATE.meetings : []
     };
     var blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
     var a = document.createElement('a');
@@ -998,13 +1005,14 @@ function importBackup(evt) {
     try {
       var data = JSON.parse(e.target.result);
       if (!data.projects || !Array.isArray(data.projects)) { toast('⚠ Invalid backup file'); return; }
+      if (data.projects.length === 0) { toast('⚠ Backup file has no projects'); return; }
       S.projects = data.projects;
       if (data.meetings) M_STATE.meetings = data.meetings;
-      localStorage.setItem('hh_projects', JSON.stringify(S.projects));
-      localStorage.setItem('hh_meetings', JSON.stringify(M_STATE.meetings));
+      try { localStorage.setItem('hh_projects', JSON.stringify(S.projects)); } catch(e) {}
+      try { localStorage.setItem('hh_meetings', JSON.stringify(M_STATE.meetings)); } catch(e) {}
       renderHome();
-      toast('✅ Data restored — ' + S.projects.length + ' projects loaded');
-    } catch(e) { toast('⚠ Could not read backup file'); }
+      toast('✅ Restored — ' + S.projects.length + ' project(s) loaded');
+    } catch(e) { toast('⚠ Could not read backup file: ' + e.message); }
   };
   reader.readAsText(file);
   // Reset input so same file can be selected again
@@ -2369,18 +2377,11 @@ async function hhBoot() {
   try {
     showScreen('screenHome');
     renderHome();
-    // Load from Google Drive and refresh
-    toast('☁️ Syncing from Drive…');
-    var cloudProjects = await loadFromCloud();
-    if (cloudProjects && cloudProjects.length) {
-      localStorage.setItem('hh_projects', JSON.stringify(cloudProjects));
-      var stored = JSON.parse(localStorage.getItem('hh_projects')||'[]');
-      var hasSeeded = stored.some(function(p){ return p._seeded==='NSE_2026_04_23'; });
-      S.projects = hasSeeded ? stored : [HH_SEED_PROJECT].concat(stored);
-      renderHome();
-      toast('☁️ Synced from Drive ✓');
-    } else {
-      toast('📱 Working offline');
+    // Drive sync disabled — using local backup/restore instead
+    // Show helpful reminder if seed was just rebuilt (localStorage was cleared)
+    var lsCheck = localStorage.getItem('hh_projects');
+    if (!lsCheck) {
+      toast('📂 Tap Restore Data if you have a backup');
     }
   } catch(e) { console.error('Boot error:', e); }
 }
@@ -2704,7 +2705,7 @@ function saveEditedObservation() {
   try { save(); } catch(e) {}
   showScreen('screenReconProject');
   renderObsList();
-  toast(obs.obsNo + ' updated');
+  toast(obs.obsNo + ' updated ✓ — tap 💾 Backup to keep changes safe');
 }
 
 function deleteObservation() {
