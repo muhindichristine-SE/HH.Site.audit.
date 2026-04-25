@@ -2704,6 +2704,113 @@ function _exportPDF(htmlContent, filename) {
 }
 
 
+
+// ════════════════════════════════════════════════════════════════
+// HH ROAD RECONNAISSANCE FIELD CHECKLIST DATA
+// ════════════════════════════════════════════════════════════════
+var HH_CHECKLIST = [
+  { section: 'ROAD SURFACE', items: [
+    { ref: 1,  label: 'Road condition at start of road' },
+    { ref: 2,  label: 'Surface type (earth / gravel / bitumen patches)' },
+    { ref: 3,  label: 'General pavement condition (good / fair / poor)' },
+    { ref: 4,  label: 'Presence of potholes' },
+    { ref: 5,  label: 'Narrow sections / bottlenecks' },
+    { ref: 6,  label: 'Shoulder condition' },
+    { ref: 29, label: 'Road condition at end of road' }
+  ]},
+  { section: 'DRAINAGE', items: [
+    { ref: 7,  label: 'Side drains present' },
+    { ref: 8,  label: 'Drainage functionality (blocked / poor)' },
+    { ref: 9,  label: 'Culverts present (general observation)' },
+    { ref: 10, label: 'Flood-prone / waterlogged areas / swamp' },
+    { ref: 26, label: 'Culverts condition (general)' }
+  ]},
+  { section: 'TERRAIN & ENVIRONMENT', items: [
+    { ref: 11, label: 'Terrain / Topography' },
+    { ref: 23, label: 'Sensitive areas (wetlands / forests / gazetted areas)' },
+    { ref: 24, label: 'General soil type (visual)' },
+    { ref: 30, label: 'Possible / known sources of construction materials' }
+  ]},
+  { section: 'TRAFFIC & SAFETY', items: [
+    { ref: 12, label: 'Dominant traffic type' },
+    { ref: 13, label: 'Traffic level (low / moderate / high)' },
+    { ref: 17, label: 'General road safety concerns' },
+    { ref: 18, label: 'High-risk areas (markets / schools / blind spots)' }
+  ]},
+  { section: 'COMMUNITIES & LAND USE', items: [
+    { ref: 14, label: 'Congestion points (trading centres)' },
+    { ref: 15, label: 'Market centres' },
+    { ref: 16, label: 'Public institutions (schools / hospitals / churches)' },
+    { ref: 19, label: 'Dominant economic activities' }
+  ]},
+  { section: 'UTILITIES & STRUCTURES', items: [
+    { ref: 20, label: 'Power lines along road' },
+    { ref: 21, label: 'Water pipelines' },
+    { ref: 22, label: 'Fibre optic presence' },
+    { ref: 25, label: 'Bridges / major structures present' },
+    { ref: 27, label: 'Railway crossings' }
+  ]},
+  { section: 'GENERAL', items: [
+    { ref: 28, label: 'Any other salient feature along the road / corridor' }
+  ]}
+];
+
+function renderChecklist() {
+  var cl = _getChecklist();
+  var p = S.projects[currentReconIdx];
+  var html = '<div class="checklist-header">' +
+    '<strong>Road:</strong> ' + (p.roadSection||p.name) +
+    ' &nbsp;|&nbsp; <strong>Date:</strong> ' + new Date(p.date||Date.now()).toLocaleDateString('en-GB') +
+    '<br><small style="color:#9ca3af;margin-top:4px;display:block;">Tap ✓ observed / ✗ not observed. Add chainage and remarks.</small>' +
+  '</div>';
+
+  var total = 0, done = 0;
+  HH_CHECKLIST.forEach(function(section) {
+    html += '<div class="checklist-section-title">' + section.section + '</div>';
+    section.items.forEach(function(item) {
+      total++;
+      var key = 'item_' + item.ref;
+      var data = cl[key] || { obs:'', chainage:'', timestamp:'', comment:'' };
+      if (data.obs) done++;
+      var tickCls = data.obs === 'tick' ? 'tick' : '';
+      var crossCls = data.obs === 'cross' ? 'cross' : '';
+      html += '<div class="checklist-item">' +
+        '<div class="checklist-item-top">' +
+          '<span class="checklist-ref">' + item.ref + '.</span>' +
+          '<span class="checklist-label">' + item.label + '</span>' +
+          '<div class="checklist-obs-btns">' +
+            '<button class="obs-btn ' + tickCls + '" onclick="setCheckObs(' + item.ref + ',&quot;tick&quot;)" title="Observed">&#10003;</button>' +
+            '<button class="obs-btn ' + crossCls + '" onclick="setCheckObs(' + item.ref + ',&quot;cross&quot;)" title="Not observed">&#10007;</button>' +
+          '</div>' +
+        '</div>' +
+        '<div class="checklist-fields">' +
+          '<input class="checklist-input" placeholder="Chainage (km)" value="' + (data.chainage||'') + '" ' +
+            'onchange="saveCheckField(' + item.ref + ',&quot;chainage&quot;,this.value)">' +
+          '<input class="checklist-input" placeholder="Photo timestamp" value="' + (data.timestamp||'') + '" ' +
+            'onchange="saveCheckField(' + item.ref + ',&quot;timestamp&quot;,this.value)">' +
+          '<textarea class="checklist-comment" placeholder="Comments / Remarks" ' +
+            'onchange="saveCheckField(' + item.ref + ',&quot;comment&quot;,this.value)">' + (data.comment||'') + '</textarea>' +
+        '</div>' +
+      '</div>';
+    });
+  });
+
+  html += '<div style="text-align:center;font-size:12px;color:#6b7280;margin:12px 0;">' + done + ' of ' + total + ' items recorded</div>';
+  html += '<div style="display:flex;gap:8px;margin-top:8px;">' +
+    '<button class="checklist-export-btn" style="flex:1;" onclick="exportChecklist(&quot;word&quot;)">&#128196; Export Word</button>' +
+    '<button class="checklist-export-btn" style="flex:1;background:#c0392b;" onclick="exportChecklist(&quot;pdf&quot;)">&#128213; Export PDF</button>' +
+  '</div>';
+
+  var el = document.getElementById('checklistContent');
+  if (el) el.innerHTML = html;
+}
+
+function _getChecklist() {
+  var p = S.projects[currentReconIdx];
+  if (!p.checklist) p.checklist = {};
+  return p.checklist;
+}
+
 function setCheckObs(ref, val) {
   var cl = _getChecklist();
   var key = 'item_' + ref;
