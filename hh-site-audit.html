@@ -498,8 +498,10 @@
   </div>
   <div style="display:flex;gap:8px;padding:8px 12px;background:#1a1a2e;overflow-x:auto;">
     <button onclick="setAnnTool('arrow')" class="ann-tool-btn" id="annArrow" style="background:#3d2c8d;color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:12px;cursor:pointer;">→ Arrow</button>
+    <button onclick="setAnnTool('rect')" class="ann-tool-btn" id="annRect" style="background:none;color:#fff;border:1px solid #555;border-radius:6px;padding:6px 12px;font-size:12px;cursor:pointer;">▭ Rect</button>
     <button onclick="setAnnTool('circle')" class="ann-tool-btn" id="annCircle" style="background:none;color:#fff;border:1px solid #555;border-radius:6px;padding:6px 12px;font-size:12px;cursor:pointer;">○ Circle</button>
     <button onclick="setAnnTool('text')" class="ann-tool-btn" id="annText" style="background:none;color:#fff;border:1px solid #555;border-radius:6px;padding:6px 12px;font-size:12px;cursor:pointer;">T Text</button>
+    <button onclick="setAnnTool('eraser')" class="ann-tool-btn" id="annEraser" style="background:none;color:#fff;border:1px solid #555;border-radius:6px;padding:6px 12px;font-size:12px;cursor:pointer;">⌫ Erase</button>
     <button onclick="setAnnColor('#e53935')" style="background:#e53935;border:none;border-radius:50%;width:28px;height:28px;cursor:pointer;"></button>
     <button onclick="setAnnColor('#FFD600')" style="background:#FFD600;border:none;border-radius:50%;width:28px;height:28px;cursor:pointer;"></button>
     <button onclick="setAnnColor('#fff')" style="background:#fff;border:1px solid #555;border-radius:50%;width:28px;height:28px;cursor:pointer;"></button>
@@ -949,8 +951,76 @@ const S = {
 
 function save() {
   localStorage.setItem('hh_projects', JSON.stringify(S.projects));
+  saveToCloud();
 }
 function saveMeetings() { localStorage.setItem('hh_meetings', JSON.stringify(M_STATE.meetings)); }
+
+// ── GOOGLE DRIVE SYNC ─────────────────────────────────────
+async function saveToCloud() {
+  try {
+    // Strip base64 photos before sending to Drive (keep size small)
+    var toSave = S.projects.map(function(p) {
+      var clone = JSON.parse(JSON.stringify(p));
+      if (clone.days) clone.days.forEach(function(d) {
+        (d.observations||[]).forEach(function(o){ o.photo = null; });
+      });
+      if (clone.issues) clone.issues.forEach(function(iss){ iss.photo = null; iss.annotations = null; });
+      return clone;
+    });
+    await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514', max_tokens: 300,
+        mcp_servers: [{"type":"url","url":"https://drivemcp.googleapis.com/mcp/v1","name":"gdrive"}],
+        messages: [{role:'user', content:'Create or overwrite a file called "HH_Site_Audit_Data.json" in My Drive with this exact JSON and no other content: ' + JSON.stringify(toSave) + '\n\nReply with only: saved'}]
+      })
+    });
+  } catch(e) { console.warn('Cloud save error:', e); }
+}
+
+async function loadFromCloud() {
+  try {
+    var res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514', max_tokens: 16000,
+        mcp_servers: [{"type":"url","url":"https://drivemcp.googleapis.com/mcp/v1","name":"gdrive"}],
+        messages: [{role:'user', content:'Read the file "HH_Site_Audit_Data.json" from My Drive and reply with ONLY the raw JSON array content — no explanation, no formatting, no markdown.'}]
+      })
+    });
+    var data = await res.json();
+    // Extract text from response (text blocks and mcp_tool_result blocks)
+    var text = (data.content||[])
+      .map(function(b){
+        if (b.type==='text') return b.text||'';
+        if (b.type==='mcp_tool_result') return (b.content&&b.content[0])?b.content[0].text||'':'';
+        return '';
+      }).join('').trim();
+    // Find JSON array in the response
+    var match = text.match(/\[\s*[\s\S]*\]/);
+    if (match) {
+      var cloudProjects = JSON.parse(match[0]);
+      // Restore photos from localStorage where available
+      var localProjects = JSON.parse(localStorage.getItem('hh_projects')||'[]');
+      cloudProjects.forEach(function(cp) {
+        var lp = localProjects.find(function(p){ return p.id===cp.id; });
+        if (!lp || !cp.days) return;
+        cp.days.forEach(function(cd,di) {
+          if (!lp.days||!lp.days[di]) return;
+          (cd.observations||[]).forEach(function(co,oi) {
+            if (lp.days[di].observations&&lp.days[di].observations[oi]) {
+              co.photo = lp.days[di].observations[oi].photo||null;
+            }
+          });
+        });
+      });
+      return cloudProjects;
+    }
+  } catch(e) { console.warn('Cloud load error:', e); }
+  return null;
+}
 
 // ── MEETING STATE ─────────────────────────────────────────
 const M_STATE = {
@@ -2233,7 +2303,7 @@ function safeEl(id) { return document.getElementById(id); }
 function safeSet(id, val) { const el = safeEl(id); if (el) el.value = val; }
 
 // ── Boot safely after DOM is fully ready ──
-function hhBoot() {
+async function hhBoot() {
   try { addAttendeeRow(); } catch(e) { console.warn('addAttendeeRow:', e); }
   try { addAgendaRow(); } catch(e) { console.warn('addAgendaRow:', e); }
   try {
@@ -2243,6 +2313,19 @@ function hhBoot() {
   try {
     showScreen('screenHome');
     renderHome();
+    // Load from Google Drive and refresh
+    toast('☁️ Syncing from Drive…');
+    var cloudProjects = await loadFromCloud();
+    if (cloudProjects && cloudProjects.length) {
+      localStorage.setItem('hh_projects', JSON.stringify(cloudProjects));
+      var stored = JSON.parse(localStorage.getItem('hh_projects')||'[]');
+      var hasSeeded = stored.some(function(p){ return p._seeded==='NSE_2026_04_23'; });
+      S.projects = hasSeeded ? stored : [HH_SEED_PROJECT].concat(stored);
+      renderHome();
+      toast('☁️ Synced from Drive ✓');
+    } else {
+      toast('📱 Working offline');
+    }
   } catch(e) { console.error('Boot error:', e); }
 }
 
@@ -2597,7 +2680,7 @@ function deleteObservation() {
 // ════════════════════════════════════════════════════════════════
 var annTool = 'arrow', annColor = '#e53935';
 var annDrawing = false, annStartX = 0, annStartY = 0;
-var annHistory = [], annBaseImage = null;
+var annHistory = [], annBaseImage = null, annOriginalImage = null;
 var annCanvasEl = null, annCtxEl = null;
 
 function openAnnotateEdit() {
@@ -2612,11 +2695,14 @@ function openAnnotateEdit() {
   if (!annCanvasEl) return;
   annCtxEl = annCanvasEl.getContext('2d');
   annHistory = []; annTool = 'arrow'; annColor = '#e53935';
+  annOriginalImage = null; annBaseImage = null;
+  setAnnTool('arrow');
   var img = new Image();
   img.onload = function() {
     annCanvasEl.width = img.width;
     annCanvasEl.height = img.height;
     annCtxEl.drawImage(img, 0, 0);
+    annOriginalImage = annCtxEl.getImageData(0, 0, annCanvasEl.width, annCanvasEl.height);
     annBaseImage = annCtxEl.getImageData(0, 0, annCanvasEl.width, annCanvasEl.height);
   };
   img.src = src;
@@ -2639,11 +2725,11 @@ function saveAnnotation() {
 
 function setAnnTool(tool) {
   annTool = tool;
-  ['annArrow','annCircle','annText'].forEach(function(id) {
+  ['annArrow','annRect','annCircle','annText','annEraser'].forEach(function(id) {
     var btn = document.getElementById(id);
     if (btn) { btn.style.background = 'none'; btn.style.border = '1px solid #555'; }
   });
-  var map = {arrow:'annArrow', circle:'annCircle', text:'annText'};
+  var map = {arrow:'annArrow', rect:'annRect', circle:'annCircle', text:'annText', eraser:'annEraser'};
   var btn = document.getElementById(map[tool]);
   if (btn) { btn.style.background = '#3d2c8d'; btn.style.border = 'none'; }
 }
@@ -2651,8 +2737,10 @@ function setAnnTool(tool) {
 function setAnnColor(color) { annColor = color; }
 
 function undoAnnotation() {
-  if (!annCtxEl || !annBaseImage) return;
-  annCtxEl.putImageData(annBaseImage, 0, 0);
+  if (!annCtxEl || annHistory.length === 0) return;
+  var prev = annHistory.pop();
+  annCtxEl.putImageData(prev, 0, 0);
+  annBaseImage = annCtxEl.getImageData(0, 0, annCanvasEl.width, annCanvasEl.height);
 }
 
 function setupAnnEvents() {
@@ -2674,8 +2762,11 @@ function annGetPos(evt) {
 }
 
 function annStart(evt) {
+  if (!annCanvasEl) return;
   annDrawing = true;
-  if (annBaseImage) annCtxEl.putImageData(annBaseImage, 0, 0);
+  // Push current state to history BEFORE modifying (enables undo)
+  annHistory.push(annCtxEl.getImageData(0, 0, annCanvasEl.width, annCanvasEl.height));
+  // Save current state as base for this stroke's preview
   annBaseImage = annCtxEl.getImageData(0, 0, annCanvasEl.width, annCanvasEl.height);
   var pos = annGetPos(evt);
   annStartX = pos.x; annStartY = pos.y;
@@ -2685,6 +2776,7 @@ function annStart(evt) {
       annCtxEl.font = 'bold ' + Math.round(annCanvasEl.width/20) + 'px Arial';
       annCtxEl.fillStyle = annColor;
       annCtxEl.fillText(txt, pos.x, pos.y);
+      annBaseImage = annCtxEl.getImageData(0, 0, annCanvasEl.width, annCanvasEl.height);
     }
     annDrawing = false;
   }
@@ -2692,11 +2784,43 @@ function annStart(evt) {
 
 function annMove(evt) {
   if (!annDrawing || annTool === 'text') return;
-  annCtxEl.putImageData(annBaseImage, 0, 0);
   var pos = annGetPos(evt);
+  var lw = Math.max(2, Math.round(annCanvasEl.width/150));
+
+  if (annTool === 'eraser') {
+    // Restore original photo pixels under eraser brush
+    if (!annOriginalImage) return;
+    var r = Math.round(annCanvasEl.width/25);
+    var ex = Math.round(pos.x - r), ey = Math.round(pos.y - r);
+    var ew = r*2, eh = r*2;
+    ex = Math.max(0, ex); ey = Math.max(0, ey);
+    ew = Math.min(ew, annCanvasEl.width - ex);
+    eh = Math.min(eh, annCanvasEl.height - ey);
+    if (ew <= 0 || eh <= 0) return;
+    var patch = annCtxEl.createImageData(ew, eh);
+    var src = annOriginalImage.data;
+    var sw = annOriginalImage.width;
+    for (var py = 0; py < eh; py++) {
+      for (var px = 0; px < ew; px++) {
+        var si = ((ey+py)*sw + (ex+px))*4;
+        var di = (py*ew + px)*4;
+        patch.data[di]   = src[si];
+        patch.data[di+1] = src[si+1];
+        patch.data[di+2] = src[si+2];
+        patch.data[di+3] = src[si+3];
+      }
+    }
+    annCtxEl.putImageData(patch, ex, ey);
+    // Update annBaseImage live so erased pixels commit immediately
+    annBaseImage = annCtxEl.getImageData(0, 0, annCanvasEl.width, annCanvasEl.height);
+    return;
+  }
+
+  // For shape tools: restore base then draw preview
+  annCtxEl.putImageData(annBaseImage, 0, 0);
   annCtxEl.strokeStyle = annColor;
   annCtxEl.fillStyle = annColor;
-  annCtxEl.lineWidth = Math.max(2, Math.round(annCanvasEl.width/150));
+  annCtxEl.lineWidth = lw;
   annCtxEl.lineCap = 'round';
   if (annTool === 'arrow') {
     annCtxEl.beginPath();
@@ -2711,6 +2835,9 @@ function annMove(evt) {
     annCtxEl.lineTo(pos.x - hs*Math.cos(angle+Math.PI/6), pos.y - hs*Math.sin(angle+Math.PI/6));
     annCtxEl.closePath();
     annCtxEl.fill();
+  } else if (annTool === 'rect') {
+    annCtxEl.beginPath();
+    annCtxEl.strokeRect(annStartX, annStartY, pos.x - annStartX, pos.y - annStartY);
   } else if (annTool === 'circle') {
     var rx = Math.abs(pos.x - annStartX)/2;
     var ry = Math.abs(pos.y - annStartY)/2;
@@ -2720,7 +2847,12 @@ function annMove(evt) {
   }
 }
 
-function annEnd() { annDrawing = false; }
+function annEnd() {
+  if (!annDrawing || !annCanvasEl) return;
+  annDrawing = false;
+  // Commit this stroke — update base so next stroke builds on it
+  annBaseImage = annCtxEl.getImageData(0, 0, annCanvasEl.width, annCanvasEl.height);
+}
 
 // ════════════════════════════════════════════════════════════════
 // VOICE INPUT + AI CLEANUP
