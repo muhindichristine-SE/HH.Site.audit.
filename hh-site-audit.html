@@ -838,7 +838,12 @@ const LOGO_DATA = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAyAAAAB7CAYAAAC
 (function cleanStaleSeeds() {
   try {
     var stored = JSON.parse(localStorage.getItem('hh_projects') || '[]');
-    var cleaned = stored.filter(function(p){ return !p._seeded; });
+    // Only remove seeded project if it has never had user obs added (i.e. still at base 20)
+    var cleaned = stored.filter(function(p) {
+      if (p._seeded !== 'NSE_2026_04_23') return true;
+      var total = p.days ? p.days.reduce(function(s,d){return s+(d.observations?d.observations.length:0);},0) : 0;
+      return total > 20;
+    });
     if (cleaned.length !== stored.length) {
       localStorage.setItem('hh_projects', JSON.stringify(cleaned));
     }
@@ -945,7 +950,11 @@ var HH_SEED_PROJECT = (function(){
 }());
 
 const S = {
-  projects: [HH_SEED_PROJECT].concat(JSON.parse(localStorage.getItem('hh_projects') || '[]')),
+  projects: (function() {
+    var stored = JSON.parse(localStorage.getItem('hh_projects') || '[]');
+    var hasSeeded = stored.some(function(p){ return p._seeded === 'NSE_2026_04_23'; });
+    return hasSeeded ? stored : [HH_SEED_PROJECT].concat(stored);
+  })(),
   proj: null, photo: null, gps: null,
   isRecording: false, recognition: null,
   annTool: 'arrow', annColor: '#c0392b',
@@ -954,9 +963,7 @@ const S = {
 };
 
 function save() {
-  // Only save non-seeded projects to localStorage to protect storage limit
-  var toSave = S.projects.filter(function(p){ return !p._seeded; });
-  localStorage.setItem('hh_projects', JSON.stringify(toSave));
+  localStorage.setItem('hh_projects', JSON.stringify(S.projects));
 }
 function saveMeetings() { localStorage.setItem('hh_meetings', JSON.stringify(M_STATE.meetings)); }
 
