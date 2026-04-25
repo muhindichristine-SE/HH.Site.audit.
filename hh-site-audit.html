@@ -429,7 +429,10 @@
       <span style="font-size:13px;">No photo</span>
     </div>
     <div style="display:flex;gap:8px;margin-top:8px;">
-      <button class="btn btn-secondary" style="flex:1;font-size:13px;" onclick="startEditCamera()">📷 Replace Photo</button>
+      <label class="btn btn-secondary" style="flex:1;font-size:13px;text-align:center;cursor:pointer;">
+        📷 Replace Photo
+        <input type="file" accept="image/*" id="editPhotoInput" style="display:none;" onchange="handleEditPhotoUpload(event)">
+      </label>
       <button class="btn btn-secondary" style="flex:1;font-size:13px;" onclick="openAnnotateEdit()">✏️ Annotate</button>
     </div>
   </div>
@@ -2620,23 +2623,18 @@ function setEditComplexity(level) {
   if (active) active.style.opacity = '1';
 }
 
-function startEditCamera() {
-  var input = document.createElement('input');
-  input.type = 'file'; input.accept = 'image/*';
-  input.onchange = function(evt) {
-    var file = evt.target.files[0];
-    if (!file) return;
-    var reader = new FileReader();
-    reader.onload = function(e) {
-      editObsPhoto = e.target.result;
-      var prev = document.getElementById('editPhotoPreview');
-      var noPhoto = document.getElementById('editNoPhoto');
-      if (prev) { prev.src = editObsPhoto; prev.style.display = 'block'; }
-      if (noPhoto) noPhoto.style.display = 'none';
-    };
-    reader.readAsDataURL(file);
+function handleEditPhotoUpload(evt) {
+  var file = evt.target.files[0];
+  if (!file) return;
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    editObsPhoto = e.target.result;
+    var prev = document.getElementById('editPhotoPreview');
+    var noPhoto = document.getElementById('editNoPhoto');
+    if (prev) { prev.src = editObsPhoto; prev.style.display = 'block'; }
+    if (noPhoto) noPhoto.style.display = 'none';
   };
-  input.click();
+  reader.readAsDataURL(file);
 }
 
 function saveEditedObservation() {
