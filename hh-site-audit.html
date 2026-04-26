@@ -2383,6 +2383,13 @@ async function hhBoot() {
     if (!lsCheck) {
       toast('📂 Tap Restore Data if you have a backup');
     }
+    // CountAPI — record visit silently
+    try {
+      fetch('https://api.countapi.xyz/hit/howardhumphreys/hh-site-audit')
+        .then(function(r){ return r.json(); })
+        .then(function(d){ console.log('HH App visits:', d.value); })
+        .catch(function(){});
+    } catch(e) {}
   } catch(e) { console.error('Boot error:', e); }
 }
 
