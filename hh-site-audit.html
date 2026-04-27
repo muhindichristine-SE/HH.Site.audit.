@@ -2985,17 +2985,16 @@ function _exportPDF(htmlContent, filename) {
     toast('⏳ Preparing PDF…');
     var printCss = '<style>@media print{body{margin:0;padding:0;} .page{margin:1.5cm;} h2{page-break-before:auto;} table{page-break-inside:avoid;}}</style>';
     var enhancedHtml = htmlContent.replace('</head>', printCss + '</head>');
-    var blob = new Blob([enhancedHtml], { type: 'text/html;charset=utf-8' });
+    var blob = new Blob([enhancedHtml], { type: 'application/octet-stream' });
     var url = URL.createObjectURL(blob);
     var a = document.createElement('a');
     a.href = url;
-    a.target = '_blank';
-    a.rel = 'noopener';
+    a.download = (filename || 'HH_Report') + '.html';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
-    setTimeout(function(){ URL.revokeObjectURL(url); }, 10000);
-    toast('✅ Report opened — tap ⋮ → Download or Print → Save as PDF');
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 5000);
+    toast('✅ Report downloaded — open in Chrome → Print → Save as PDF');
   } catch(e) {
     toast('⚠ PDF failed — use Word export instead');
   }
@@ -3635,17 +3634,16 @@ function _exportPDF(htmlContent, filename) {
     var enhancedHtml = htmlContent.replace('</head>', printCss + '</head>');
 
     // Create a blob and open in new tab — Android Chrome shows Download button
-    var blob = new Blob([enhancedHtml], { type: 'text/html;charset=utf-8' });
+    var blob = new Blob([enhancedHtml], { type: 'application/octet-stream' });
     var url = URL.createObjectURL(blob);
     var a = document.createElement('a');
     a.href = url;
-    a.target = '_blank';
-    a.rel = 'noopener';
+    a.download = (filename || 'HH_Report') + '.html';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
-    setTimeout(function(){ URL.revokeObjectURL(url); }, 10000);
-    toast('✅ Report opened — tap ⋮ → Download or Print → Save as PDF');
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 5000);
+    toast('✅ Report downloaded — open in Chrome → Print → Save as PDF');
   } catch(e) {
     toast('⚠ PDF failed — use Word export instead');
   }
