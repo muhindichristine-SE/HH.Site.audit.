@@ -2983,7 +2983,17 @@ async function _cleanWithAI(rawText, type, fieldId, statusEl) {
 function _exportPDF(htmlContent, filename) {
   try {
     toast('⏳ Preparing PDF…');
-    var printCss = '<style>@media print{body{margin:0;padding:0;} .page{margin:1.5cm;} h2{page-break-before:auto;} table{page-break-inside:avoid;}}</style>';
+    var printCss = '<style>@media print{' +
+      'body{margin:0;padding:0;}' +
+      '.page{margin:1.5cm;}' +
+      '.obs-block{page-break-inside:avoid;page-break-after:always;}' +
+      '.obs-block:last-child{page-break-after:auto;}' +
+      'h2{page-break-before:always;page-break-after:avoid;}' +
+      'h2:first-of-type{page-break-before:auto;}' +
+      'h3{page-break-after:avoid;}' +
+      'table{page-break-inside:avoid;}' +
+      '.cover-page{page-break-after:always;}' +
+      '}</style>';
     var enhancedHtml = htmlContent.replace('</head>', printCss + '</head>');
     var blob = new Blob([enhancedHtml], { type: 'application/octet-stream' });
     var url = URL.createObjectURL(blob);
@@ -3225,8 +3235,8 @@ function _buildReconWord(p, allObs, conclusion, format) {
   var obsCardsHtml = '';
   var figCounterGlobal = 1;
   Object.keys(grouped).forEach(function(sec) {
-    obsCardsHtml += '<h3 style="color:#2E75B6;font-size:11pt;margin-top:18pt;margin-bottom:8pt;border-left:4px solid #2E75B6;padding-left:8pt;">' + sec + '</h3>';
-    grouped[sec].forEach(function(o) {
+    obsCardsHtml += '<h3 style="color:#2E75B6;font-size:11pt;margin-top:18pt;margin-bottom:8pt;border-left:4px solid #2E75B6;padding-left:8pt;page-break-after:avoid;">' + sec + '</h3>';
+    grouped[sec].forEach(function(o, oidx) {
       var sevBg = o.complexity==='High'?'#fee2e2':o.complexity==='Medium'?'#fef3c7':'#d1fae5';
       var sevColor = o.complexity==='High'?'#991b1b':o.complexity==='Medium'?'#92400e':'#065f46';
       var gpsStr = o.gps ? 'Lat ' + o.gps.lat.toFixed(5) + '  Long ' + o.gps.lng.toFixed(5) : '—';
@@ -3238,7 +3248,7 @@ function _buildReconWord(p, allObs, conclusion, format) {
         '<img src="' + o.photo + '" style="width:100%;max-height:180px;object-fit:cover;border-radius:4px;display:block;">' +
         '<div style="font-size:7.5pt;color:#555;margin-top:3pt;text-align:center;font-style:italic;"><strong>' + figLbl + '</strong><br>' + gpsStr + '<br>' + dateStr + ' ' + (o.time||'') + '</div>' :
         '<div style="height:80px;background:#f3f4f6;border-radius:4px;display:flex;align-items:center;justify-content:center;color:#9ca3af;">No photo</div>';
-      obsCardsHtml += '<table style="width:100%;border-collapse:collapse;margin-bottom:16pt;font-size:9pt;font-family:Arial;">' +
+      obsCardsHtml += '<div class="obs-block" style="page-break-inside:avoid;page-break-after:always;margin-bottom:20pt;"><table style="width:100%;border-collapse:collapse;margin-bottom:8pt;font-size:9pt;font-family:Arial;">' +
         '<tr style="background:#1F3864;">' +
           '<td style="color:#fff;font-weight:bold;padding:5pt 7pt;width:65pt;">' + o.obsNo + '</td>' +
           '<td style="color:#fff;font-weight:bold;padding:5pt 7pt;">' + o.title + '</td>' +
@@ -3263,7 +3273,7 @@ function _buildReconWord(p, allObs, conclusion, format) {
             '</tr>' +
           '</table>' +
         '</td></tr>' +
-      '</table>';
+      '</table></div>';
     });
   });
 
@@ -3630,7 +3640,17 @@ function _exportPDF(htmlContent, filename) {
     toast('⏳ Preparing PDF…');
 
     // Inject print-friendly CSS into the HTML content
-    var printCss = '<style>@media print{body{margin:0;padding:0;} .page{margin:1.5cm;} h2{page-break-before:auto;} table{page-break-inside:avoid;}}</style>';
+    var printCss = '<style>@media print{' +
+      'body{margin:0;padding:0;}' +
+      '.page{margin:1.5cm;}' +
+      '.obs-block{page-break-inside:avoid;page-break-after:always;}' +
+      '.obs-block:last-child{page-break-after:auto;}' +
+      'h2{page-break-before:always;page-break-after:avoid;}' +
+      'h2:first-of-type{page-break-before:auto;}' +
+      'h3{page-break-after:avoid;}' +
+      'table{page-break-inside:avoid;}' +
+      '.cover-page{page-break-after:always;}' +
+      '}</style>';
     var enhancedHtml = htmlContent.replace('</head>', printCss + '</head>');
 
     // Create a blob and open in new tab — Android Chrome shows Download button
