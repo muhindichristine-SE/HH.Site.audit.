@@ -2537,14 +2537,13 @@ function renderObsList() {
     var sevColor = o.complexity === 'High' ? '#fee2e2' : o.complexity === 'Medium' ? '#fef3c7' : '#d1fae5';
     var sevText = o.complexity === 'High' ? '#991b1b' : o.complexity === 'Medium' ? '#92400e' : '#065f46';
     var photoHtml = o.photo ? '<img src="' + o.photo + '" alt="" style="width:100%;border-radius:6px;max-height:100px;object-fit:cover;">' : '<div class="no-photo">📷</div>';
-    var gpsHtml = o.gps ? '<div style="font-size:10px;color:#6b7280;margin-top:4px;">📍 ' + o.gps.lat.toFixed(4) + '°, ' + o.gps.lng.toFixed(4) + '°</div>' : '';
     return '<div class="issue-card" onclick="openEditObs(' + i + ')" style="cursor:pointer;">' +
       '<div class="issue-card-header">' +
         '<div class="issue-card-title">' + o.obsNo + ' — ' + (o.title || 'Untitled') + '</div>' +
         '<span class="tag" style="background:' + sevColor + ';color:' + sevText + ';">' + o.complexity + '</span>' +
       '</div>' +
       '<div class="issue-card-body">' +
-        '<div class="issue-photo-col">' + photoHtml + gpsHtml + '</div>' +
+        '<div class="issue-photo-col">' + photoHtml + '</div>' +
         '<div class="issue-desc-col">' +
           '<div style="font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;margin-bottom:4px;">' + (o.section||'') + ' · ' + o.category + '</div>' +
           '<div class="issue-desc-text">' + (o.description||'') + '</div>' +
@@ -3044,7 +3043,7 @@ function startAddObs() {
   if (navigator.geolocation) {
     navigator.geolocation.getCurrentPosition(
       function(pos) {
-        obsGps = { lat: pos.coords.latitude, lng: pos.coords.longitude, acc: pos.coords.accuracy, timestamp: new Date().toISOString() };
+        obsGps = { lat: pos.coords.latitude, lng: pos.coords.longitude, alt: pos.coords.altitude, acc: pos.coords.accuracy, timestamp: new Date().toISOString() };
         var chip = document.getElementById('obsGpsChip');
         if (chip) chip.textContent = '📍 ' + obsGps.lat.toFixed(5) + '°, ' + obsGps.lng.toFixed(5) + '°';
       },
@@ -3058,48 +3057,85 @@ function startObsCamera() {
   document.querySelector('#screenAddObs input[type=file]').click();
 }
 
-function stampPhotoWithGPS(dataUrl, callback) {
-  var img = new Image();
-  img.onload = function() {
+function stampPhotoWithGPS(dataUrl, obsNo, callback) {
+  function drawStamp(img, locationName) {
     var canvas = document.createElement('canvas');
     canvas.width = img.width; canvas.height = img.height;
     var ctx = canvas.getContext('2d');
     ctx.drawImage(img, 0, 0);
-    if (obsGps) {
-      var now = new Date();
-      var scale = img.width / 400;
-      var barH = Math.round(110 * scale);
-      var mapW = Math.round(110 * scale);
-      var pad = Math.round(10 * scale);
-      var y = img.height - barH;
-      ctx.fillStyle = 'rgba(0,0,0,0.82)';
-      ctx.fillRect(mapW, y, img.width - mapW, barH);
+    var s = img.width / 480;
+    var barH = Math.round(100 * s);
+    var pad = Math.round(10 * s);
+    var y = img.height - barH;
+    // dark bar full width
+    ctx.fillStyle = 'rgba(0,0,0,0.84)';
+    ctx.fillRect(0, y, img.width, barH);
+    // left accent stripe
+    ctx.fillStyle = '#1a4b8c';
+    ctx.fillRect(0, y, Math.round(5*s), barH);
+    // location name
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold ' + Math.round(14*s) + 'px Arial';
+    ctx.textAlign = 'left';
+    ctx.fillText(locationName, pad + Math.round(8*s), y + Math.round(22*s));
+    // coords
+    var gpsText = obsGps ? (obsGps.lat.toFixed(5) + '\u00b0 N    ' + obsGps.lng.toFixed(5) + '\u00b0 E') : '';
+    var altText = (obsGps && obsGps.alt && !isNaN(obsGps.alt)) ? ('    Alt: ' + Math.round(obsGps.alt) + 'm') : '';
+    ctx.fillStyle = '#aaffaa';
+    ctx.font = Math.round(11*s) + 'px Arial';
+    ctx.fillText(gpsText + altText, pad + Math.round(8*s), y + Math.round(40*s));
+    // datetime EAT
+    var now = new Date();
+    var eat = new Date(now.getTime() + (3*60*60*1000));
+    var dateStr = eat.toLocaleDateString('en-GB', {day:'2-digit',month:'short',year:'numeric'});
+    var timeStr = eat.toLocaleTimeString('en-GB', {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+    ctx.fillStyle = '#ffdd88';
+    ctx.fillText(dateStr + '    ' + timeStr + ' EAT', pad + Math.round(8*s), y + Math.round(57*s));
+    // reference line
+    ctx.fillStyle = '#88ccff';
+    ctx.font = Math.round(10*s) + 'px Arial';
+    ctx.fillText('Howard Humphreys (EA) Ltd  |  KeNHA/2940/2026', pad + Math.round(8*s), y + Math.round(73*s));
+    // OBS badge top-left
+    if (obsNo) {
+      var badgePad = Math.round(8*s);
+      ctx.fillStyle = 'rgba(180,60,30,0.92)';
+      var bw = Math.round(72*s), bh = Math.round(24*s);
+      ctx.fillRect(badgePad, badgePad, bw, bh);
       ctx.fillStyle = '#fff';
-      ctx.font = 'bold ' + Math.round(11*scale) + 'px Arial';
-      ctx.textAlign = 'right';
-      ctx.fillText('HH Site Audit', img.width - pad, y + Math.round(18*scale));
-      ctx.font = 'bold ' + Math.round(14*scale) + 'px Arial';
+      ctx.font = 'bold ' + Math.round(11*s) + 'px Arial';
       ctx.textAlign = 'left';
-      ctx.fillText('Nakuru County, Kenya', mapW + pad, y + Math.round(32*scale));
-      ctx.font = Math.round(12*scale) + 'px Arial';
-      ctx.fillStyle = '#ddd';
-      ctx.fillText('Lat ' + obsGps.lat.toFixed(6) + '°  Long ' + obsGps.lng.toFixed(6) + '°', mapW + pad, y + Math.round(52*scale));
-      ctx.fillText(now.toLocaleDateString('en-GB', {weekday:'long',day:'2-digit',month:'2-digit',year:'numeric'}), mapW + pad, y + Math.round(70*scale));
-      ctx.fillText(now.toLocaleTimeString('en-GB', {hour:'2-digit',minute:'2-digit'}) + ' GMT+03:00', mapW + pad, y + Math.round(88*scale));
-      ctx.fillStyle = '#2a7d4f';
-      ctx.fillRect(0, y, mapW, barH);
-      ctx.strokeStyle = '#1a5c38'; ctx.lineWidth = scale;
-      for (var i = 0; i < 5; i++) {
-        ctx.beginPath(); ctx.moveTo(i*mapW/4,y); ctx.lineTo(i*mapW/4,y+barH); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(0,y+i*barH/4); ctx.lineTo(mapW,y+i*barH/4); ctx.stroke();
-      }
-      var pinX = mapW*0.45, pinY = y+barH*0.45, pinR = Math.round(12*scale);
-      ctx.fillStyle = '#e53935';
-      ctx.beginPath(); ctx.arc(pinX, pinY-pinR, pinR, 0, Math.PI*2); ctx.fill();
-      ctx.fillStyle = '#fff';
-      ctx.beginPath(); ctx.arc(pinX, pinY-pinR, pinR*0.45, 0, Math.PI*2); ctx.fill();
+      ctx.fillText(obsNo, badgePad + Math.round(6*s), badgePad + Math.round(17*s));
     }
-    callback(canvas.toDataURL('image/jpeg', 0.85));
+    // HH FIELD badge top-right
+    var hbw = Math.round(80*s), hbh = Math.round(24*s);
+    ctx.fillStyle = 'rgba(26,75,140,0.92)';
+    ctx.fillRect(img.width - hbw - Math.round(8*s), Math.round(8*s), hbw, hbh);
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold ' + Math.round(10*s) + 'px Arial';
+    ctx.textAlign = 'right';
+    ctx.fillText('HH FIELD', img.width - Math.round(14*s), Math.round(8*s) + Math.round(17*s));
+    callback(canvas.toDataURL('image/jpeg', 0.88));
+  }
+  var img = new Image();
+  img.onload = function() {
+    if (!obsGps) { drawStamp(img, 'Location unavailable'); return; }
+    fetch('https://nominatim.openstreetmap.org/reverse?lat=' + obsGps.lat + '&lon=' + obsGps.lng + '&format=json', {headers:{'Accept':'application/json'}})
+      .then(function(r){ return r.json(); })
+      .then(function(d) {
+        var parts = [];
+        if (d.address) {
+          var a = d.address;
+          if (a.village||a.town||a.suburb) parts.push(a.village||a.town||a.suburb);
+          else if (a.city) parts.push(a.city);
+          if (a.county||a.state_district) parts.push(a.county||a.state_district);
+        }
+        var loc = parts.length ? parts.join(', ') : (d.display_name ? d.display_name.split(',').slice(0,2).join(',') : 'Kenya');
+        drawStamp(img, loc);
+      })
+      .catch(function() {
+        var loc = obsGps.lat.toFixed(4) + '\u00b0, ' + obsGps.lng.toFixed(4) + '\u00b0';
+        drawStamp(img, loc);
+      });
   };
   img.onerror = function() { callback(dataUrl); };
   img.src = dataUrl;
@@ -3107,26 +3143,34 @@ function stampPhotoWithGPS(dataUrl, callback) {
 
 function handleObsUpload(evt) {
   var file = evt.target.files[0]; if (!file) return;
+  var p = S.projects[currentReconIdx];
+  var allObs = p ? _allObs() : [];
+  var nextObsNo = 'OBS-' + String(allObs.length + 1).padStart(2,'0');
+  function doStamp() {
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      stampPhotoWithGPS(e.target.result, nextObsNo, function(stamped) {
+        obsPhoto = stamped;
+        var prev = document.getElementById('obsPhotoPreview');
+        var noP = document.getElementById('obsNoPhoto');
+        if (prev) { prev.src = stamped; prev.style.display = 'block'; }
+        if (noP) noP.style.display = 'none';
+      });
+    };
+    reader.readAsDataURL(file);
+  }
   if (!obsGps && navigator.geolocation) {
     navigator.geolocation.getCurrentPosition(
       function(pos) {
-        obsGps = {lat:pos.coords.latitude, lng:pos.coords.longitude, acc:pos.coords.accuracy, timestamp:new Date().toISOString()};
+        obsGps = {lat:pos.coords.latitude, lng:pos.coords.longitude, alt:pos.coords.altitude, acc:pos.coords.accuracy, timestamp:new Date().toISOString()};
         var chip = document.getElementById('obsGpsChip');
         if (chip) chip.textContent = '📍 ' + obsGps.lat.toFixed(5) + '°, ' + obsGps.lng.toFixed(5) + '°';
-      }, function(){}, {enableHighAccuracy:true, timeout:5000}
+        doStamp();
+      }, function(){ doStamp(); }, {enableHighAccuracy:true, timeout:5000}
     );
+  } else {
+    doStamp();
   }
-  var reader = new FileReader();
-  reader.onload = function(e) {
-    stampPhotoWithGPS(e.target.result, function(stamped) {
-      obsPhoto = stamped;
-      var prev = document.getElementById('obsPhotoPreview');
-      var noP = document.getElementById('obsNoPhoto');
-      if (prev) { prev.src = stamped; prev.style.display = 'block'; }
-      if (noP) noP.style.display = 'none';
-    });
-  };
-  reader.readAsDataURL(file);
 }
 
 function saveObservation() {
@@ -3476,6 +3520,178 @@ function _buildReconWord(p, allObs, conclusion, format) {
     setTimeout(function(){ URL.revokeObjectURL(url); }, 5000);
     toast('✅ Chapter 2 report downloaded');
   }
+}
+
+// ════════════════════════════════════════════════════════════════
+// HH ROAD RECONNAISSANCE FIELD CHECKLIST — 30 ITEMS
+// ════════════════════════════════════════════════════════════════
+var HH_CHECKLIST = [
+  {
+    section: 'A. Road Geometry & Alignment',
+    items: [
+      { ref: 'A1', label: 'Existing carriageway width (measured or estimated)' },
+      { ref: 'A2', label: 'Shoulder width and condition (gravel, bare earth, eroded)' },
+      { ref: 'A3', label: 'Horizontal alignment — sharp curves, sight distance restrictions' },
+      { ref: 'A4', label: 'Vertical alignment — steep gradients, crest curves with poor visibility' },
+      { ref: 'A5', label: 'Road reserve width — encroachments, vegetation, structures in reserve' }
+    ]
+  },
+  {
+    section: 'B. Pavement Condition',
+    items: [
+      { ref: 'B1', label: 'Surface type (murram gravel, earth, partial bitumen, other)' },
+      { ref: 'B2', label: 'Rutting depth and extent along carriageway' },
+      { ref: 'B3', label: 'Potholes — density, depth, distribution' },
+      { ref: 'B4', label: 'Surface erosion, washouts, and gully formation' },
+      { ref: 'B5', label: 'Existing bitumen sections — cracking, ravelling, deformation' }
+    ]
+  },
+  {
+    section: 'C. Drainage',
+    items: [
+      { ref: 'C1', label: 'Side drains — present, condition, blocked or silted' },
+      { ref: 'C2', label: 'Mitre drains and cut-off drains — present and functional' },
+      { ref: 'C3', label: 'Culverts — present, type, size, condition, blockage' },
+      { ref: 'C4', label: 'Waterlogging / ponding on carriageway or adjacent land' },
+      { ref: 'C5', label: 'Evidence of overtopping or flood damage at crossings' }
+    ]
+  },
+  {
+    section: 'D. Structures',
+    items: [
+      { ref: 'D1', label: 'Bridges — span, width, type, visible defects, load restriction signs' },
+      { ref: 'D2', label: 'Box culverts — size, condition, scour, headwall damage' },
+      { ref: 'D3', label: 'Drifts / causeways — condition, flood frequency, impassability' },
+      { ref: 'D4', label: 'Railway level crossings — signage, sight distance, surface condition' },
+      { ref: 'D5', label: 'Retaining walls or slope protection — present and condition' }
+    ]
+  },
+  {
+    section: 'E. Materials & Borrow Sources',
+    items: [
+      { ref: 'E1', label: 'Visible borrow pits — location, estimated extent, material quality' },
+      { ref: 'E2', label: 'Stone quarries or rock outcrops — location, approximate haulage' },
+      { ref: 'E3', label: 'Water sources for construction — rivers, boreholes, proximity' }
+    ]
+  },
+  {
+    section: 'F. Environment & Social',
+    items: [
+      { ref: 'F1', label: 'Forest zones or protected areas adjacent to corridor' },
+      { ref: 'F2', label: 'Schools, hospitals, churches within road influence zone' },
+      { ref: 'F3', label: 'Agricultural encroachment into road reserve' },
+      { ref: 'F4', label: 'Sensitive community areas — Ogiek, resettlement, heritage sites' },
+      { ref: 'F5', label: 'Overhead utilities — power lines, telecoms, water mains' },
+      { ref: 'F6', label: 'Active construction contracts overlapping corridor' },
+      { ref: 'F7', label: 'Overall road safety — mixed traffic, pedestrians, livestock, signage' }
+    ]
+  }
+];
+
+function _getChecklist() {
+  var p = S.projects[currentReconIdx];
+  if (!p) return {};
+  if (!p.checklist) p.checklist = {};
+  return p.checklist;
+}
+
+function _saveChecklistItem(ref, field, value) {
+  var p = S.projects[currentReconIdx];
+  if (!p) return;
+  if (!p.checklist) p.checklist = {};
+  if (!p.checklist['item_' + ref]) p.checklist['item_' + ref] = {};
+  p.checklist['item_' + ref][field] = value;
+  saveState();
+}
+
+function renderChecklist() {
+  var container = document.getElementById('checklistContent');
+  if (!container) return;
+  var p = S.projects[currentReconIdx];
+  if (!p) { container.innerHTML = '<div style="padding:20px;color:#888;">No project selected.</div>'; return; }
+  var cl = _getChecklist();
+  var total = 0, done = 0;
+  HH_CHECKLIST.forEach(function(sec) { sec.items.forEach(function(it) { total++; if (cl['item_' + it.ref] && cl['item_' + it.ref].obs) done++; }); });
+  var pct = total > 0 ? Math.round(done / total * 100) : 0;
+
+  var html = '<div class="checklist-header">' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">' +
+      '<span style="font-weight:700;color:#1F3864;font-size:13px;">HH Road Reconnaissance Field Checklist</span>' +
+      '<span style="font-weight:700;color:#2E75B6;">' + done + ' / ' + total + '</span>' +
+    '</div>' +
+    '<div style="background:#e5e7eb;border-radius:99px;height:6px;overflow:hidden;">' +
+      '<div style="height:100%;width:' + pct + '%;background:#2E75B6;border-radius:99px;transition:width 0.3s;"></div>' +
+    '</div>' +
+    '<div style="margin-top:4px;color:#6b7280;">' + pct + '% complete — ' + p.name + '</div>' +
+  '</div>';
+
+  HH_CHECKLIST.forEach(function(section) {
+    html += '<div class="checklist-section-title">' + section.section + '</div>';
+    section.items.forEach(function(item) {
+      var data = cl['item_' + item.ref] || {};
+      var tickActive = data.obs === 'tick' ? ' tick' : '';
+      var crossActive = data.obs === 'cross' ? ' cross' : '';
+      var hasFields = data.obs ? '' : 'display:none;';
+      html += '<div class="checklist-item" id="clitem_' + item.ref + '">' +
+        '<div class="checklist-item-top">' +
+          '<span class="checklist-ref">' + item.ref + '</span>' +
+          '<span class="checklist-label">' + item.label + '</span>' +
+          '<div class="checklist-obs-btns">' +
+            '<button class="obs-btn' + tickActive + '" onclick="clSetObs(\'' + item.ref + '\',\'tick\')" title="Satisfactory / Present">✓</button>' +
+            '<button class="obs-btn' + crossActive + '" onclick="clSetObs(\'' + item.ref + '\',\'cross\')" title="Issue / Absent">✗</button>' +
+          '</div>' +
+        '</div>' +
+        '<div class="checklist-fields" id="clfields_' + item.ref + '" style="' + hasFields + '">' +
+          '<input class="checklist-input" type="text" placeholder="Chainage (km)" value="' + (data.chainage || '') + '" ' +
+            'onchange="clSave(\'' + item.ref + '\',\'chainage\',this.value)" />' +
+          '<input class="checklist-input" type="text" placeholder="Time observed" value="' + (data.time || '') + '" ' +
+            'onchange="clSave(\'' + item.ref + '\',\'time\',this.value)" />' +
+          '<textarea class="checklist-comment" placeholder="Comments / remarks..." ' +
+            'onchange="clSave(\'' + item.ref + '\',\'comment\',this.value)">' + (data.comment || '') + '</textarea>' +
+        '</div>' +
+      '</div>';
+    });
+  });
+
+  html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:16px;">' +
+    '<button class="checklist-export-btn" onclick="exportChecklist(\'word\')">Export Word</button>' +
+    '<button class="checklist-export-btn" style="background:#374151;" onclick="exportChecklist(\'pdf\')">Export PDF</button>' +
+  '</div>';
+
+  container.innerHTML = html;
+}
+
+function clSetObs(ref, val) {
+  var data = _getChecklist()['item_' + ref] || {};
+  var newVal = data.obs === val ? null : val;
+  _saveChecklistItem(ref, 'obs', newVal);
+  var el = document.getElementById('clitem_' + ref);
+  if (el) {
+    var tick = el.querySelector('.obs-btn:first-child');
+    var cross = el.querySelector('.obs-btn:last-child');
+    if (tick) tick.className = 'obs-btn' + (newVal === 'tick' ? ' tick' : '');
+    if (cross) cross.className = 'obs-btn' + (newVal === 'cross' ? ' cross' : '');
+    var fields = document.getElementById('clfields_' + ref);
+    if (fields) fields.style.display = newVal ? '' : 'none';
+  }
+  var container = document.getElementById('checklistContent');
+  if (container) {
+    var p = S.projects[currentReconIdx];
+    var cl = _getChecklist();
+    var total = 0, done = 0;
+    HH_CHECKLIST.forEach(function(sec) { sec.items.forEach(function(it) { total++; if (cl['item_' + it.ref] && cl['item_' + it.ref].obs) done++; }); });
+    var pct = total > 0 ? Math.round(done / total * 100) : 0;
+    var prog = container.querySelector('.checklist-header div div');
+    var label = container.querySelector('.checklist-header div:last-child');
+    var counter = container.querySelector('.checklist-header div span:last-child');
+    if (prog) prog.style.width = pct + '%';
+    if (label) label.textContent = pct + '% complete — ' + (p ? p.name : '');
+    if (counter) counter.textContent = done + ' / ' + total;
+  }
+}
+
+function clSave(ref, field, value) {
+  _saveChecklistItem(ref, field, value);
 }
 
 function exportChecklist(format) {
