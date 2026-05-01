@@ -6,6 +6,7 @@
 <title>HH Site Audit — Howard Humphreys</title>
 <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:wght@300;400;600;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://unpkg.com/docx@8.5.0/build/index.umd.js"></script>
 <style>
   :root {
@@ -3124,31 +3125,60 @@ async function _cleanWithAI(rawText, type, fieldId, statusEl) {
 // ════════════════════════════════════════════════════════════════
 function _exportPDF(htmlContent, filename) {
   try {
-    toast('⏳ Preparing PDF…');
-    var printCss = '<style>@media print{' +
-      'body{margin:0;padding:0;}' +
-      '.page{margin:1.5cm;}' +
-      '.obs-block{page-break-inside:avoid;page-break-after:always;}' +
-      '.obs-block:last-child{page-break-after:auto;}' +
-      'h2{page-break-before:always;page-break-after:avoid;}' +
-      'h2:first-of-type{page-break-before:auto;}' +
-      'h3{page-break-after:avoid;}' +
-      'table{page-break-inside:avoid;}' +
-      '.cover-page{page-break-after:always;}' +
-      '}</style>';
-    var enhancedHtml = htmlContent.replace('</head>', printCss + '</head>');
-    var blob = new Blob([enhancedHtml], { type: 'application/octet-stream' });
-    var url = URL.createObjectURL(blob);
-    var a = document.createElement('a');
-    a.href = url;
-    a.download = (filename || 'HH_Report') + '.html';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    setTimeout(function(){ URL.revokeObjectURL(url); }, 5000);
-    toast('✅ Report downloaded — open in Chrome → Print → Save as PDF');
+    toast('⏳ Generating PDF — this may take 20–30 seconds…');
+
+    // Build a hidden iframe to host the HTML so html2canvas can render it
+    var iframe = document.createElement('iframe');
+    iframe.style.cssText = 'position:fixed;left:-9999px;top:-9999px;width:794px;height:1123px;border:none;visibility:hidden;';
+    document.body.appendChild(iframe);
+
+    var iDoc = iframe.contentDocument || iframe.contentWindow.document;
+    iDoc.open();
+    iDoc.write(htmlContent);
+    iDoc.close();
+
+    // Wait for images inside the iframe to load, then render
+    setTimeout(function() {
+      try {
+        var { jsPDF } = window.jspdf;
+        var doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4', compress: true });
+
+        doc.html(iDoc.body, {
+          callback: function(pdf) {
+            try {
+              pdf.save((filename || 'HH_Report') + '.pdf');
+              toast('✅ PDF downloaded successfully');
+            } catch(saveErr) {
+              toast('⚠ PDF save failed — try Word export instead');
+            } finally {
+              document.body.removeChild(iframe);
+            }
+          },
+          x: 10,
+          y: 10,
+          width: 190,
+          windowWidth: 794,
+          autoPaging: 'text',
+          margin: [10, 10, 10, 10],
+          html2canvas: {
+            scale: 1,
+            useCORS: true,
+            allowTaint: true,
+            logging: false,
+            scrollX: 0,
+            scrollY: 0
+          }
+        });
+      } catch(renderErr) {
+        document.body.removeChild(iframe);
+        toast('⚠ PDF render failed — use Word export instead');
+        console.error('_exportPDF render error:', renderErr);
+      }
+    }, 2000);
+
   } catch(e) {
     toast('⚠ PDF failed — use Word export instead');
+    console.error('_exportPDF error:', e);
   }
 }
 
@@ -3409,7 +3439,7 @@ function _buildReconWord(p, allObs, conclusion, format) {
   var blueRl = '#2E75B6';
   var txtGry = '#555555';
   var tblSz  = '9pt';
-  var bodyFt = '"Times New Roman",Times,serif';
+  var bodyFt = 'Arial,Helvetica,sans-serif';
   var hdFt   = 'Arial,Helvetica,sans-serif';
 
   // ── CSS ───────────────────────────────────────────────────────────
@@ -3788,9 +3818,6 @@ function _buildReconWord(p, allObs, conclusion, format) {
     runningFtr +
     '<div class="Section1">' +
 
-    // COVER PAGE
-    coverPage +
-
     // REVISION RECORD SHEET
     revRecord +
 
@@ -3821,7 +3848,16 @@ function _buildReconWord(p, allObs, conclusion, format) {
     '</div></body></html>';
 
   if (format === 'pdf') {
-    _exportPDF(html, docRef + '_SiteRecon_' + (p.name||'Report').replace(/[^a-zA-Z0-9]/g,'_'));
+    var blob = new Blob([html], { type: 'application/octet-stream' });
+    var url  = URL.createObjectURL(blob);
+    var a    = document.createElement('a');
+    a.href   = url;
+    a.download = docRef + '_SiteRecon_' + (p.name||'Report').replace(/[^a-zA-Z0-9]/g,'_') + '.html';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 5000);
+    toast('✅ HTML downloaded — open in Chrome → ⋮ → Print → Save as PDF');
   } else {
     var blob = new Blob([html], { type: 'application/msword' });
     var url  = URL.createObjectURL(blob);
@@ -3951,17 +3987,17 @@ function renderChecklist() {
           '<span class="checklist-ref">' + item.ref + '</span>' +
           '<span class="checklist-label">' + item.label + '</span>' +
           '<div class="checklist-obs-btns">' +
-            '<button class="obs-btn' + tickActive + '" onclick="clSetObs(\'' + item.ref + '\',\'tick\')" title="Satisfactory / Present">✓</button>' +
-            '<button class="obs-btn' + crossActive + '" onclick="clSetObs(\'' + item.ref + '\',\'cross\')" title="Issue / Absent">✗</button>' +
+            '<button class="obs-btn' + tickActive + '" data-ref="' + item.ref + '" data-val="tick" title="Satisfactory / Present">✓</button>' +
+            '<button class="obs-btn' + crossActive + '" data-ref="' + item.ref + '" data-val="cross" title="Issue / Absent">✗</button>' +
           '</div>' +
         '</div>' +
         '<div class="checklist-fields" id="clfields_' + item.ref + '" style="' + hasFields + '">' +
           '<input class="checklist-input" type="text" placeholder="Chainage (km)" value="' + (data.chainage || '') + '" ' +
-            'onchange="clSave(\'' + item.ref + '\',\'chainage\',this.value)" />' +
+            'data-ref="' + item.ref + '" data-field="chainage" />' +
           '<input class="checklist-input" type="text" placeholder="Time observed" value="' + (data.time || '') + '" ' +
-            'onchange="clSave(\'' + item.ref + '\',\'time\',this.value)" />' +
+            'data-ref="' + item.ref + '" data-field="time" />' +
           '<textarea class="checklist-comment" placeholder="Comments / remarks..." ' +
-            'onchange="clSave(\'' + item.ref + '\',\'comment\',this.value)">' + (data.comment || '') + '</textarea>' +
+            'data-ref="' + item.ref + '" data-field="comment">' + (data.comment || '') + '</textarea>' +
         '</div>' +
       '</div>';
     });
@@ -3973,6 +4009,19 @@ function renderChecklist() {
   '</div>';
 
   container.innerHTML = html;
+
+  // Wire obs buttons — safer than inline onclick on mobile
+  container.querySelectorAll('.obs-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      clSetObs(btn.getAttribute('data-ref'), btn.getAttribute('data-val'));
+    });
+  });
+  // Wire input/textarea change handlers
+  container.querySelectorAll('.checklist-input, .checklist-comment').forEach(function(el) {
+    el.addEventListener('change', function() {
+      clSave(el.getAttribute('data-ref'), el.getAttribute('data-field'), el.value);
+    });
+  });
 }
 
 function clSetObs(ref, val) {
@@ -4060,7 +4109,12 @@ function exportChecklist(format) {
   '</div></body></html>';
 
   if (format === 'pdf') {
-    _exportPDF(html, 'HH_Checklist_' + (p.name||'Recon').replace(/[^a-zA-Z0-9]/g,'_') + '_' + new Date().toISOString().slice(0,10));
+    var blob = new Blob([html], { type: 'application/octet-stream' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'HH_Checklist_' + (p.name||'Recon').replace(/[^a-zA-Z0-9]/g,'_') + '_' + new Date().toISOString().slice(0,10) + '.html';
+    a.click();
+    toast('✅ HTML downloaded — open in Chrome → ⋮ → Print → Save as PDF');
   } else {
     var blob = new Blob([html], {type:'application/msword'});
     var a = document.createElement('a');
