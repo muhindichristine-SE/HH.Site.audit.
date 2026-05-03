@@ -429,7 +429,7 @@
   <div class="action-row">
     <button class="btn btn-primary" style="flex:1;" id="btnAddObs">📷 Add Observation</button>
     <button class="btn btn-secondary" style="flex:1;" id="btnExportWord">📄 Word</button>
-    <button class="btn btn-secondary" style="flex:1;background:#c0392b;color:#fff;" id="btnExportPdf">📕 PDF</button>
+    <button class="btn btn-secondary" style="flex:1;background:#c0392b;color:#fff;" id="btnExportPdf">📕 Print / PDF</button>
   </div>
   <div class="tabs">
     <button class="tab active" onclick="switchReconTab('obs',this)">Observations</button>
@@ -3386,21 +3386,70 @@ async function exportReconReport(format) {
   _migrateReconProject(p);
   var allObs = _allObs();
   if (!allObs.length) { toast('No observations to export'); return; }
-  toast('Generating report…');
+  toast('Generating report — please wait…');
+
+  var obsSummary = allObs.map(function(o) {
+    return [o.obsNo, o.section, o.category, o.terrain||'', o.width||'', o.title||'', o.description||'', o.implication||'', 'Complexity:'+(o.complexity||'')].filter(Boolean).join(' | ');
+  }).join('\n');
+
+  var sections = allObs.map(function(o){ return o.section; }).filter(Boolean).filter(function(v,i,a){ return a.indexOf(v)===i; });
+  var projectName = p.name || 'Road Corridor';
+
+  var prompt =
+    'You are a senior civil engineer at Howard Humphreys Consulting Engineers writing a pre-bid site reconnaissance report.\n' +
+    'Project: ' + projectName + '\n' +
+    'Road sections observed: ' + sections.join(', ') + '\n' +
+    'Total observations: ' + allObs.length + ' (' + allObs.filter(function(o){return o.complexity==='High';}).length + ' High, ' +
+      allObs.filter(function(o){return o.complexity==='Medium';}).length + ' Medium, ' +
+      allObs.filter(function(o){return o.complexity==='Low';}).length + ' Low complexity)\n\n' +
+    'Field observations:\n' + obsSummary + '\n\n' +
+    'Based ONLY on the observations above, write the following in JSON with these exact keys:\n' +
+    '{\n' +
+    '  "conclusion": "2-sentence professional conclusion. No headings.",\n' +
+    '  "topography": "2-3 sentence paragraph on terrain and topographic features observed.",\n' +
+    '  "structures": "HTML <p> paragraphs on major structures observed. Each gets a <strong>Name:</strong> lead.",\n' +
+    '  "drainage": "HTML <p> paragraphs on drainage issues observed. Each gets a <strong>Issue:</strong> lead.",\n' +
+    '  "services": "HTML <p> paragraphs on services and utilities observed.",\n' +
+    '  "towns": "HTML <p> paragraphs on key towns and market centres. Each gets a <strong>Name:</strong> lead.",\n' +
+    '  "environment": "HTML <p> paragraphs on social and environmental sensitive areas.",\n' +
+    '  "materials": "HTML <p> paragraphs on potential material sources observed."\n' +
+    '}\n' +
+    'Return ONLY valid JSON. No markdown. No missing keys. Base everything strictly on the observations provided.';
+
+  var fallback = {
+    conclusion: 'The pre-bid site reconnaissance confirms significant engineering complexity along the corridor. Howard Humphreys is well-positioned to deliver the required consultancy services.',
+    topography: '<p class="body">The project corridor traverses terrain as observed across the sections visited. Topographic conditions will have implications for pavement design and drainage.</p>',
+    structures: '<p class="body">Structures observed along the corridor are recorded in the RICS table and Annex A.</p>',
+    drainage: '<p class="body">Drainage deficiencies were identified along the corridor as recorded in the field observations.</p>',
+    services: '<p class="body">Services and utilities present along the corridor were noted during the reconnaissance.</p>',
+    towns: '<p class="body">Key settlements and market centres along the corridor are recorded in the field observations.</p>',
+    environment: '<p class="body">Sensitive environmental and social receptors were noted during the reconnaissance.</p>',
+    materials: '<p class="body">Potential construction material sources in the vicinity of the corridor were noted during the reconnaissance.</p>'
+  };
+
+  var generated = fallback;
   try {
     var res = await fetch(HH_API, {
       method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514', max_tokens: 200,
-        messages: [{role:'user', content: 'Write a 2-sentence professional conclusion for a pre-bid site reconnaissance report by Howard Humphreys Consulting Engineers. Project: ' + p.name + '. ' + allObs.length + ' observations, ' + allObs.filter(function(o){return o.complexity==='High';}).length + ' high complexity. No headings.'}]
-      })
+      body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 2000, messages: [{role:'user', content: prompt}] })
     });
     var data = await res.json();
-    var conclusion = data.content && data.content[0] ? data.content[0].text.trim() : 'The reconnaissance confirms significant engineering complexity requiring comprehensive feasibility study and design. Howard Humphreys is well-positioned to deliver the required services.';
-    _buildReconWord(p, allObs, conclusion, format);
+    var raw = data.content && data.content[0] ? data.content[0].text.trim() : '';
+    var clean = raw.replace(/^```json|^```|```$/gm, '').trim();
+    var parsed = JSON.parse(clean);
+    ['topography','structures','drainage','services','towns','environment','materials'].forEach(function(k) {
+      if (parsed[k] && !parsed[k].trim().startsWith('<')) {
+        parsed[k] = '<p class="body">' + parsed[k] + '</p>';
+      } else if (parsed[k]) {
+        parsed[k] = parsed[k].replace(/<p>/g, '<p class="body">');
+      }
+    });
+    generated = parsed;
   } catch(e) {
-    _buildReconWord(p, allObs, 'The pre-bid site reconnaissance confirms significant engineering complexity along the corridor. Howard Humphreys is well-positioned to deliver the required consultancy services.', format);
+    console.warn('AI narrative failed, using fallback', e);
   }
+
+  _buildReconWord(p, allObs, generated, format);
 }
 
 function _buildReconWord(p, allObs, conclusion, format) {
@@ -3524,7 +3573,7 @@ function _buildReconWord(p, allObs, conclusion, format) {
       figNum++;
       var figLbl = 'Figure ' + (figNum < 10 ? '0' + figNum : figNum) + ' — ' + (o.section || '');
       imgHtml =
-        '<img src="' + o.photo + '" style="width:100%;max-height:140px;object-fit:cover;border-radius:3px;display:block;">' +
+        '<img src="' + o.photo + '" style="width:100%;max-height:160px;object-fit:contain;border-radius:3px;display:block;background:#f8f8f8;">' +
         '<p style="font-size:7.5pt;color:#555;margin-top:3pt;font-style:italic;text-align:center;"><strong>' + figLbl + '</strong><br>' + gpsStr + '<br>' + (o.dayDate||'') + ' ' + (o.time||'') + '</p>';
     } else {
       imgHtml = '<div style="height:80px;background:#f0f3f8;border:1px dashed #ccc;display:flex;align-items:center;justify-content:center;border-radius:3px;"><span style="color:#aaa;font-size:8pt;">No photo</span></div>';
@@ -3558,94 +3607,14 @@ function _buildReconWord(p, allObs, conclusion, format) {
     '</table>';
 
   // ── Section 2.3 content populated from observations ───────────────
-  // 2.3.1 Topography
-  var topoContent =
-    '<p class="body">The project road corridor traverses a varied topography across Nakuru County. ' +
-    'The terrain transitions from flat to gently undulating around the Salgaa–Matueku section, ' +
-    'with elevation gaining progressively towards the Elburgon and Msingi Mwema highlands. ' +
-    'Rocky outcrops with exposed granite/gneiss were confirmed at approximately Ch.+234 (Lat -0.234°), ' +
-    'where the road surface is actively waterlogged during wet season. ' +
-    'The Nessuit area traverses hilly forested terrain adjacent to the Logoman Forest reserve. ' +
-    'The overall corridor spans an elevation range from approximately 2,100 m at Salgaa to over 2,600 m in the Mariashoni highland section, ' +
-    'with significant implications for pavement design including subgrade susceptibility to frost heave and seasonal saturation.</p>';
-
-  // 2.3.2 Major Structures and Bridges
-  var structContent =
-    '<p class="body">The following significant structures were identified during the reconnaissance:</p>' +
-    '<p class="body"><strong>Railway Level Crossing — Elburgon:</strong> A dual narrow-gauge railway level crossing was observed within the road corridor at Elburgon town centre. ' +
-    'No barriers, warning signals or adequate signage were present at the crossing. ' +
-    'Kenya Railways Corporation (KRC) approval and formal crossing agreement will be required before any road works can commence in this vicinity. ' +
-    'Road safety upgrades including warning signs, rumble strips and possible barrier installation are recommended.</p>' +
-    '<p class="body"><strong>Culvert Structures:</strong> Multiple culvert structures were observed along the corridor in varying states of repair. ' +
-    'A complete culvert failure with headwall collapse was confirmed at the Mariashoni section, with active flooding of the carriageway. ' +
-    'Additional blocked culvert inlets were observed at Salgaa (OBS-03) and Nessuit (OBS-18). ' +
-    'A full culvert inventory with invert level survey is required to establish the extent of drainage infrastructure requiring rehabilitation.</p>';
-
-  // 2.3.3 Drainage
-  var drainContent =
-    '<p class="body">Drainage deficiencies represent the most critical and recurring issue along the project corridor. ' +
-    'The following specific drainage problems were confirmed during the reconnaissance:</p>' +
-    '<p class="body"><strong>Blocked Culverts:</strong> Multiple culvert inlets were found completely blocked with compacted solid waste, rubble and debris. ' +
-    'The culvert at Salgaa town (OBS-03) was completely non-functional with standing water at the inlet and evidence of water ponding and road damage.</p>' +
-    '<p class="body"><strong>Active Waterlogging:</strong> The road carriageway at Ch.~234 (OBS-08) was found actively waterlogged and impassable to standard vehicles during wet season. ' +
-    'Prior maintenance earthworks had failed to resolve the underlying drainage deficiency, confirming that engineered cross-drainage is required rather than routine grading.</p>' +
-    '<p class="body"><strong>Failed Drainage Infrastructure:</strong> A partially collapsed drainage inlet with heavy overgrowth was observed at Nessuit (OBS-18), ' +
-    'consistent with the pattern of recurring culvert and drain failure observed across the corridor. ' +
-    'A hydrological study and full culvert inventory are required to design adequate drainage solutions.</p>';
-
-  // 2.3.4 Services and Utilities
-  var svcContent =
-    '<p class="body">The following services and utilities were observed along the project corridor:</p>' +
-    '<p class="body"><strong>Electricity:</strong> Overhead power lines run parallel to the road alignment along significant sections of the corridor. ' +
-    'Care will be required during construction to avoid interference with utility infrastructure.</p>' +
-    '<p class="body"><strong>Railway Infrastructure:</strong> The metre-gauge railway line intersects the road corridor at Elburgon town. ' +
-    'Coordination with Kenya Railways Corporation (KRC) will be essential for any works in the vicinity of the level crossing.</p>' +
-    '<p class="body"><strong>Telecommunications:</strong> Telecoms infrastructure including poles and overhead cables are present along the corridor. ' +
-    'Utility relocation may be required in sections where road widening is planned.</p>';
-
-  // 2.3.5 Key Towns
-  var townsContent =
-    '<p class="body">The following key towns and market centres are located within the road network:</p>' +
-    '<p class="body"><strong>Salgaa:</strong> A major commercial junction with significant heavy goods vehicle traffic. ' +
-    'The road surface is severely deteriorated with extensive potholes and drainage failures. ' +
-    'Active market activity generates high pedestrian-vehicle conflict. ' +
-    'Road safety improvements are urgently required.</p>' +
-    '<p class="body"><strong>Elburgon:</strong> The main urban centre along the corridor with a paved main street. ' +
-    'Commercial frontage is active and traffic volumes are high. ' +
-    'The railway level crossing presents a safety hazard. ' +
-    'Construction within the town will require staged works and coordination with the local administration.</p>' +
-    '<p class="body"><strong>Nessuit Trading Centre:</strong> A rural market centre with visible potholes and road surface deterioration. ' +
-    'Market stalls encroach on the road reserve and generate pedestrian-vehicle conflicts during peak trading hours.</p>' +
-    '<p class="body"><strong>Matuiku:</strong> A small settlement with Matuiku Comprehensive School directly fronting the road. ' +
-    'The school constitutes a sensitive receptor requiring dedicated traffic management provisions during construction.</p>';
-
-  // 2.3.6 Environmental
-  var envContent =
-    '<p class="body"><strong>Logoman Forest — Nessuit:</strong> The road corridor interfaces with the Logoman Forest protected zone at Nessuit. ' +
-    'The Ogiek Peoples Development Program signboard confirms an active forest rehabilitation program in partnership with Kenya Forest Service. ' +
-    'Any road works in this area will require a full Environmental and Social Impact Assessment (ESIA), Kenya Forest Service permit, ' +
-    'and formal community consultation with Ogiek indigenous community representatives. ' +
-    'Vegetation clearing within the forest buffer zone must be strictly minimised.</p>' +
-    '<p class="body"><strong>Sensitive Receptors:</strong> Multiple sensitive receptors were identified along the corridor including ' +
-    'Matuiku Comprehensive School, Kamwaura Secondary School, a Catholic Church at Turi, and residential communities at Salgaa and Nessuit. ' +
-    'Dust suppression, noise management and traffic management provisions will be mandatory during construction at these locations.</p>' +
-    '<p class="body"><strong>Agricultural Land:</strong> Active potato farming plots were observed encroaching on the road reserve between Elburgon and Msingi Mwema. ' +
-    'Community engagement and crop compensation provisions will be required prior to construction in these areas.</p>';
-
-  // 2.3.7 Materials Sources
-  var matsContent =
-    '<p class="body">The following potential construction material sources were identified in the vicinity of the project corridor:</p>' +
-    '<p class="body"><strong>Borrow Pit — Nessuit (OBS-21):</strong> An active borrow pit with excavator operations was confirmed at Nessuit, ' +
-    'exposing red lateritic murram over rocky substrate. ' +
-    'This represents a local source of fill and subgrade material for road formation works. ' +
-    'Laboratory testing (CBR, Atterberg limits, particle size distribution) is recommended to confirm suitability for pavement construction. ' +
-    'Ownership and extraction rights require confirmation prior to inclusion in the BOQ.</p>' +
-    '<p class="body"><strong>Stone Quarry — Kamwaura:</strong> An active stone quarry with manual crushing operations was confirmed at Kamwaura, ' +
-    'providing crushed aggregate in varying grades. ' +
-    'The proximity to the road corridor will significantly reduce aggregate haulage costs for Section 3 works. ' +
-    'Stone quality and gradation testing against specification requirements is recommended.</p>' +
-    '<p class="body"><strong>Rocky Outcrops:</strong> Prominent granite/gneiss outcrops were observed at Ch.~234 in the Salgaa–Matueku section. ' +
-    'These may represent potential sources of rip-rap and stone pitching material subject to quarrying feasibility assessment.</p>';
+  // ── Section 2.3 — AI-generated from observations ──────────────
+  var topoContent    = (typeof generated === 'object' && generated.topography)   ? generated.topography   : '<p class="body">Topographic conditions along the corridor are as recorded in the field observations.</p>';
+  var structContent  = (typeof generated === 'object' && generated.structures)   ? generated.structures   : '<p class="body">Structures observed are recorded in the RICS table and Annex A.</p>';
+  var drainContent   = (typeof generated === 'object' && generated.drainage)     ? generated.drainage     : '<p class="body">Drainage deficiencies are recorded in the field observations.</p>';
+  var svcContent     = (typeof generated === 'object' && generated.services)     ? generated.services     : '<p class="body">Services and utilities are recorded in the field observations.</p>';
+  var townsContent   = (typeof generated === 'object' && generated.towns)        ? generated.towns        : '<p class="body">Key towns and market centres are recorded in the field observations.</p>';
+  var envContent     = (typeof generated === 'object' && generated.environment)  ? generated.environment  : '<p class="body">Social and environmental sensitive areas are recorded in the field observations.</p>';
+  var matsContent    = (typeof generated === 'object' && generated.materials)    ? generated.materials    : '<p class="body">Potential material sources are recorded in the field observations.</p>';
 
   // ── Cover page ────────────────────────────────────────────────────
   var projectTitle = p.name || 'Feasibility and Preliminary Engineering Design: Neissuit\u2013Salgaa\u2013Elburgon\u2013Turi\u2013Muchorwe\u2013Langwenda\u2013Kamwaura\u2013Embomoss Road';
@@ -3857,7 +3826,7 @@ function _buildReconWord(p, allObs, conclusion, format) {
     a.click();
     document.body.removeChild(a);
     setTimeout(function(){ URL.revokeObjectURL(url); }, 5000);
-    toast('✅ HTML downloaded — open in Chrome → ⋮ → Print → Save as PDF');
+    toast('✅ Downloaded — open file in Chrome, then ⋮ → Print → Save as PDF to get a PDF');
   } else {
     var blob = new Blob([html], { type: 'application/msword' });
     var url  = URL.createObjectURL(blob);
@@ -4114,7 +4083,7 @@ function exportChecklist(format) {
     a.href = URL.createObjectURL(blob);
     a.download = 'HH_Checklist_' + (p.name||'Recon').replace(/[^a-zA-Z0-9]/g,'_') + '_' + new Date().toISOString().slice(0,10) + '.html';
     a.click();
-    toast('✅ HTML downloaded — open in Chrome → ⋮ → Print → Save as PDF');
+    toast('✅ Downloaded — open file in Chrome, then ⋮ → Print → Save as PDF to get a PDF');
   } else {
     var blob = new Blob([html], {type:'application/msword'});
     var a = document.createElement('a');
