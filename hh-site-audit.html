@@ -326,6 +326,7 @@
     font-size: 14px; cursor: pointer; background: #fff;
     display: flex; align-items: center; justify-content: center;
     font-weight: 700; transition: all 0.15s;
+    touch-action: manipulation; -webkit-tap-highlight-color: transparent;
   }
   .obs-btn.tick { border-color: #a7f3d0; background: #d1fae5; color: #065f46; }
   .obs-btn.cross { border-color: #fca5a5; background: #fee2e2; color: #991b1b; }
@@ -706,6 +707,7 @@
   <div style="display:flex;gap:10px;margin-top:14px;">
     <button class="btn btn-secondary" style="flex:1;" onclick="generateMeetingNotes()" id="formatBtn">✦ Format Notes</button>
     <button class="btn btn-primary" style="flex:1;" onclick="exportMeetingWord()" id="meetExportBtn">📝 Export Word</button>
+    <button class="btn btn-primary" style="flex:1;background:#374151;" onclick="exportMeetingPDF()" id="meetPdfBtn">📄 Export PDF</button>
   </div>
 </div>
 
@@ -1344,24 +1346,27 @@ function startMeetingRecording() {
       M_STATE.transcript + (interim ? '…' + interim : '');
   };
 
-  // Auto-restart if browser stops — keeps capturing all voices
-  M_STATE.recognition.onend = () => {
+  // Named restart handler — arrow functions don't have arguments.callee
+  function meetOnEnd() {
     if (M_STATE.isRecording) {
       M_STATE.recognition = createRecognizer();
-      M_STATE.recognition.onresult = arguments.callee; // reuse same handler via restart
-      startMeetingRecording();
+      M_STATE.recognition.onresult = M_STATE._onresult;
+      M_STATE.recognition.onend = meetOnEnd;
+      M_STATE.recognition.onerror = M_STATE._onerror;
+      try { M_STATE.recognition.start(); } catch(e) {}
     }
-  };
+  }
+  // Stash handlers so the restart closure can reattach them
+  M_STATE._onresult = M_STATE.recognition.onresult;
+
+  // Auto-restart if browser stops — keeps capturing all voices
+  M_STATE.recognition.onend = meetOnEnd;
 
   M_STATE.recognition.onerror = (e) => {
-    // Ignore no-speech errors — just restart
-    if (e.error === 'no-speech' && M_STATE.isRecording) {
-      M_STATE.recognition = createRecognizer();
-      startMeetingRecording();
-      return;
-    }
-    stopMeetingRecording();
+    // Ignore no-speech errors — just let onend restart naturally
+    if (e.error !== 'no-speech') stopMeetingRecording();
   };
+  M_STATE._onerror = M_STATE.recognition.onerror;
 
   // Request high-sensitivity audio — uses device mic at maximum gain
   if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
@@ -1598,6 +1603,53 @@ async function exportMeetingWord() {
   toast('📝 Meeting notes exported!');
 }
 
+function exportMeetingPDF() {
+  const m = M_STATE.current;
+  if (!m) { toast('⚠ No meeting data'); return; }
+
+  const date = m.date || new Date().toLocaleDateString('en-GB');
+  const atRows = (m.attendees||[]).map(a =>
+    `<tr><td style="padding:4pt 6pt;border:1px solid #ddd;">${a.name||''}</td>
+         <td style="padding:4pt 6pt;border:1px solid #ddd;">Howard Humphreys</td>
+         <td style="padding:4pt 6pt;border:1px solid #ddd;">${a.dept||''}</td></tr>`
+  ).join('');
+  const agendaItems = (m.agenda||[]).map((a,i) => `<li>${a}</li>`).join('');
+  const notes = document.getElementById('meetAiText') ? document.getElementById('meetAiText').textContent : (m.rawTranscript||'');
+
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
+  <style>
+    body { font-family: Arial, sans-serif; font-size: 10pt; margin: 2cm; color: #222; }
+    h1 { font-size: 14pt; color: #3d2c8d; border-bottom: 2px solid #3d2c8d; padding-bottom: 4pt; }
+    h2 { font-size: 11pt; color: #3d2c8d; margin-top: 16pt; }
+    table { width: 100%; border-collapse: collapse; font-size: 9pt; margin-bottom: 12pt; }
+    th { background: #3d2c8d; color: #fff; padding: 5pt 6pt; text-align: left; }
+    td { border: 1px solid #ccc; padding: 4pt 6pt; }
+    .meta td:first-child { background: #ede9f8; font-weight: bold; width: 35%; }
+    pre { white-space: pre-wrap; font-family: Arial, sans-serif; font-size: 9pt; line-height: 1.6; }
+    .footer { margin-top: 20pt; font-size: 8pt; color: #888; border-top: 1px solid #ddd; padding-top: 6pt; }
+  </style>
+  </head><body>
+  <h1>MEETING MINUTES — ${m.subject||''}</h1>
+  <table class="meta">
+    <tr><td>Project</td><td>${m.project||''}</td></tr>
+    <tr><td>Meeting No.</td><td>${m.no||''}</td></tr>
+    <tr><td>Date &amp; Time</td><td>${date}</td></tr>
+    <tr><td>Meeting Place</td><td>${m.place||''}</td></tr>
+    <tr><td>Minutes By</td><td>${m.minutesBy||''}</td></tr>
+  </table>
+  <h2>Attendees</h2>
+  <table><thead><tr><th>Name</th><th>Representing</th><th>Department</th></tr></thead>
+  <tbody>${atRows}</tbody></table>
+  ${agendaItems ? `<h2>Agenda</h2><ol>${agendaItems}</ol>` : ''}
+  <h2>Minutes / Notes</h2>
+  <pre>${notes}</pre>
+  <div class="footer">Howard Humphreys (East Africa) Limited — Meeting Minutes — ${date} — CONFIDENTIAL</div>
+  </body></html>`;
+
+  const filename = 'HH-Meeting-Notes-' + (m.subject||'Minutes').replace(/[^a-zA-Z0-9]/g,'_');
+  _exportPDF(html, filename);
+}
+
 function toast(msg, ms = 2500) {
   const t = document.getElementById('toast');
   t.textContent = msg; t.classList.add('show');
@@ -1829,10 +1881,29 @@ function startRecording() {
     document.getElementById('transcriptBox').textContent = updated;
   };
   S.recognition.onerror = () => stopRecording();
-  S.recognition.onend = () => {
-    // Auto-restart if still in recording mode so user can keep speaking
-    if (S.isRecording) { try { S.recognition.start(); } catch(e) {} }
-  };
+
+  // Named handler so it can self-reference on restart without arguments.callee
+  function siteAudioOnEnd() {
+    if (S.isRecording) {
+      try {
+        S.recognition = new SR();
+        S.recognition.continuous = false;
+        S.recognition.interimResults = false;
+        S.recognition.lang = 'en-GB';
+        S.recognition.onresult = e => {
+          const transcript = e.results[0][0].transcript;
+          const current = document.getElementById('issueDesc').value;
+          const updated = current ? current + ' ' + transcript : transcript;
+          document.getElementById('issueDesc').value = updated;
+          document.getElementById('transcriptBox').textContent = updated;
+        };
+        S.recognition.onerror = () => stopRecording();
+        S.recognition.onend = siteAudioOnEnd;
+        S.recognition.start();
+      } catch(e) { stopRecording(); }
+    }
+  }
+  S.recognition.onend = siteAudioOnEnd;
   S.recognition.start(); S.isRecording = true;
   document.getElementById('micBtn').classList.add('recording'); document.getElementById('micBtn').textContent = '⏹';
   document.getElementById('voiceState').textContent = 'Recording…'; document.getElementById('voiceState').classList.add('live');
@@ -2950,9 +3021,10 @@ function setupAnnEvents() {
   annCanvasEl.onmousedown = annStart;
   annCanvasEl.onmousemove = annMove;
   annCanvasEl.onmouseup = annEnd;
+  // Fix 7: wrap touchend with preventDefault to stop browser back-navigation gesture
   annCanvasEl.ontouchstart = function(e) { e.preventDefault(); if(e.touches[0]) annStart(e.touches[0]); };
   annCanvasEl.ontouchmove = function(e) { e.preventDefault(); if(e.touches[0]) annMove(e.touches[0]); };
-  annCanvasEl.ontouchend = annEnd;
+  annCanvasEl.ontouchend = function(e) { e.preventDefault(); annEnd(); };
 }
 
 function annGetPos(evt) {
@@ -2981,6 +3053,9 @@ function annStart(evt) {
       annBaseImage = annCtxEl.getImageData(0, 0, annCanvasEl.width, annCanvasEl.height);
     }
     annDrawing = false;
+  } else if (annTool === 'eraser') {
+    // Fix 6: apply erase immediately on touch so tap-without-move still works
+    annMove(evt);
   }
 }
 
@@ -3984,6 +4059,11 @@ function renderChecklist() {
     btn.addEventListener('click', function() {
       clSetObs(btn.getAttribute('data-ref'), btn.getAttribute('data-val'));
     });
+    // Also handle touchend directly — prevents 300ms delay swallowing the tap
+    btn.addEventListener('touchend', function(e) {
+      e.preventDefault();
+      clSetObs(btn.getAttribute('data-ref'), btn.getAttribute('data-val'));
+    }, {passive: false});
   });
   // Wire input/textarea change handlers
   container.querySelectorAll('.checklist-input, .checklist-comment').forEach(function(el) {
@@ -4078,12 +4158,8 @@ function exportChecklist(format) {
   '</div></body></html>';
 
   if (format === 'pdf') {
-    var blob = new Blob([html], { type: 'application/octet-stream' });
-    var a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = 'HH_Checklist_' + (p.name||'Recon').replace(/[^a-zA-Z0-9]/g,'_') + '_' + new Date().toISOString().slice(0,10) + '.html';
-    a.click();
-    toast('✅ Downloaded — open file in Chrome, then ⋮ → Print → Save as PDF to get a PDF');
+    var filename = 'HH_Checklist_' + (p.name||'Recon').replace(/[^a-zA-Z0-9]/g,'_') + '_' + new Date().toISOString().slice(0,10);
+    _exportPDF(html, filename);
   } else {
     var blob = new Blob([html], {type:'application/msword'});
     var a = document.createElement('a');
