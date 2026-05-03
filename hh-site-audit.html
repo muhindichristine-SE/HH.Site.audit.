@@ -226,9 +226,9 @@
   #annotationImg { width: 100%; display: block; }
   #annotationCanvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; cursor: crosshair; }
   .ann-tools { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; align-items: center; }
-  .tool-btn { padding: 7px 13px; border-radius: var(--radius); border: 1px solid var(--hh-border); background: white; color: var(--hh-text); font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.15s; }
+  .tool-btn { padding: 7px 13px; border-radius: var(--radius); border: 1px solid var(--hh-border); background: white; color: var(--hh-text); font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.15s; touch-action: manipulation; -webkit-tap-highlight-color: transparent; user-select: none; }
   .tool-btn.active { background: var(--hh-purple); color: white; border-color: var(--hh-purple); }
-  .color-dot { width: 24px; height: 24px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; flex-shrink: 0; transition: border-color 0.15s; }
+  .color-dot { width: 24px; height: 24px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; flex-shrink: 0; transition: border-color 0.15s; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
   .color-dot.active { border-color: var(--hh-purple-dark); }
 
   /* REPORT */
@@ -690,27 +690,43 @@
 <!-- MEETING RECORDING -->
 <div class="screen" id="screenMeetingRecord">
   <button class="back-btn" onclick="showScreen('screenNewMeeting')">← Back</button>
-  <p class="page-title">Record Meeting</p>
-  <p class="page-sub">Tap the mic to start recording. Speak clearly. Tap again to stop.</p>
 
-  <div class="voice-panel" style="margin-bottom:16px;">
-    <p class="voice-title">Meeting Recording</p>
-    <p class="voice-hint">Place device in the centre of the room. All voices will be captured.</p>
-    <button class="mic-btn" id="meetMicBtn" onclick="toggleMeetingRecording()">🎤</button>
-    <p class="voice-state" id="meetVoiceState">Tap to start recording</p>
-    <div class="transcript-area" id="meetTranscriptBox" style="min-height:120px;max-height:220px;overflow-y:auto;">Recording will appear here…</div>
+  <!-- Meeting header card -->
+  <div style="background:var(--hh-purple-dark);border-radius:var(--radius);padding:16px 18px;margin-bottom:16px;color:#fff;">
+    <div style="font-size:10px;font-weight:700;letter-spacing:1px;opacity:0.65;text-transform:uppercase;margin-bottom:3px;">Meeting</div>
+    <div id="mrSubjectDisplay" style="font-family:'Source Serif 4',serif;font-size:18px;font-weight:700;margin-bottom:8px;line-height:1.25;">—</div>
+    <div style="display:flex;gap:16px;flex-wrap:wrap;font-size:12px;opacity:0.8;">
+      <span id="mrProjectDisplay">—</span>
+      <span id="mrDateDisplay">—</span>
+      <span id="mrPlaceDisplay">—</span>
+    </div>
   </div>
 
-  <div class="ai-section" id="meetAiSection" style="display:none;">
-    <div class="ai-label">✦ AI-formatted meeting notes</div>
+  <!-- Recording panel -->
+  <div style="background:white;border:1px solid var(--hh-border);border-radius:var(--radius);padding:18px;margin-bottom:14px;text-align:center;">
+    <div style="font-size:12px;color:var(--hh-gray);margin-bottom:14px;">Place device in the centre of the room — all voices will be captured</div>
+    <button class="mic-btn" id="meetMicBtn" onclick="toggleMeetingRecording()" style="width:72px;height:72px;border-radius:50%;background:var(--hh-purple);border:none;cursor:pointer;font-size:28px;transition:all 0.2s;box-shadow:0 4px 14px rgba(61,44,141,0.3);margin-bottom:12px;">🎤</button>
+    <div class="voice-state" id="meetVoiceState" style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.8px;color:var(--hh-gray);">Tap to start recording</div>
+  </div>
+
+  <!-- Live transcript -->
+  <div style="margin-bottom:14px;">
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:var(--hh-gray);margin-bottom:6px;">Live Transcript</div>
+    <div id="meetTranscriptBox" style="background:var(--hh-gray-xlight);border:1px solid var(--hh-border);border-radius:var(--radius);padding:14px;min-height:100px;max-height:200px;overflow-y:auto;font-size:13px;line-height:1.6;color:var(--hh-text);font-style:italic;">Recording will appear here…</div>
+  </div>
+
+  <!-- AI notes section -->
+  <div class="ai-section" id="meetAiSection" style="display:none;margin-bottom:14px;">
+    <div class="ai-label" style="margin-bottom:8px;">✦ AI-formatted meeting notes</div>
     <div id="meetAiLoading" class="ai-loading" style="display:none;"><div class="spinner"></div> Formatting meeting notes…</div>
     <div id="meetAiText" style="font-size:13px;line-height:1.6;color:var(--hh-purple-dark);white-space:pre-wrap;"></div>
   </div>
 
-  <div style="display:flex;gap:10px;margin-top:14px;">
-    <button class="btn btn-secondary" style="flex:1;" onclick="generateMeetingNotes()" id="formatBtn">✦ Format Notes</button>
-    <button class="btn btn-primary" style="flex:1;" onclick="exportMeetingWord()" id="meetExportBtn">📝 Export Word</button>
-    <button class="btn btn-primary" style="flex:1;background:#374151;" onclick="exportMeetingPDF()" id="meetPdfBtn">📄 Export PDF</button>
+  <!-- Action buttons -->
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">
+    <button class="btn btn-secondary" onclick="generateMeetingNotes()" id="formatBtn" style="font-size:13px;">✦ Format</button>
+    <button class="btn btn-primary" onclick="exportMeetingWord()" id="meetExportBtn" style="font-size:13px;">📝 Word</button>
+    <button class="btn btn-primary" onclick="exportMeetingPDF()" id="meetPdfBtn" style="font-size:13px;background:#374151;">📄 PDF</button>
   </div>
 </div>
 
@@ -815,16 +831,16 @@
   <p class="page-title">Annotate Photo</p>
   <p style="font-size:13px;color:var(--hh-gray);margin-bottom:12px;">Draw on the image, then tap <strong>Save Annotations</strong> below</p>
   <div class="ann-tools">
-    <button class="tool-btn active" id="tArrow" onclick="setTool('arrow', this)">→ Arrow</button>
-    <button class="tool-btn" id="tCircle" onclick="setTool('circle', this)">○ Circle</button>
-    <button class="tool-btn" id="tRect" onclick="setTool('rect', this)">□ Box</button>
-    <button class="tool-btn" id="tPen" onclick="setTool('pen', this)">✏ Pen</button>
-    <button class="tool-btn" id="tEraser" onclick="setTool('eraser', this)">⌫ Erase</button>
-    <button class="tool-btn" onclick="undoAnn()">↩ Undo</button>
+    <button class="tool-btn active" id="tArrow"  data-tool="arrow"  onclick="setTool('arrow',this)">→ Arrow</button>
+    <button class="tool-btn"        id="tCircle" data-tool="circle" onclick="setTool('circle',this)">○ Circle</button>
+    <button class="tool-btn"        id="tRect"   data-tool="rect"   onclick="setTool('rect',this)">□ Box</button>
+    <button class="tool-btn"        id="tPen"    data-tool="pen"    onclick="setTool('pen',this)">✏ Pen</button>
+    <button class="tool-btn"        id="tEraser" data-tool="eraser" onclick="setTool('eraser',this)">⌫ Erase</button>
+    <button class="tool-btn"        onclick="undoAnn()">↩ Undo</button>
     <div style="display:flex;gap:5px;align-items:center;margin-left:auto;">
-      <div class="color-dot active" style="background:#c0392b;" onclick="setAnnColor('#c0392b',this)"></div>
-      <div class="color-dot" style="background:#f59e0b;" onclick="setAnnColor('#f59e0b',this)"></div>
-      <div class="color-dot" style="background:#ffffff;border:1px solid #ccc;" onclick="setAnnColor('#ffffff',this)"></div>
+      <div class="color-dot active" data-color="#c0392b" style="background:#c0392b;" onclick="setAnnColor('#c0392b',this)"></div>
+      <div class="color-dot"        data-color="#f59e0b" style="background:#f59e0b;" onclick="setAnnColor('#f59e0b',this)"></div>
+      <div class="color-dot"        data-color="#ffffff" style="background:#ffffff;border:1px solid #ccc;" onclick="setAnnColor('#ffffff',this)"></div>
     </div>
   </div>
   <div class="ann-wrap"><img id="annotationImg" src="" alt="Issue"><canvas id="annotationCanvas"></canvas></div>
@@ -1212,6 +1228,16 @@ function goToMeetingRecord() {
   document.getElementById('meetVoiceState').textContent = 'Tap to start recording';
   document.getElementById('meetMicBtn').classList.remove('recording');
   document.getElementById('meetMicBtn').textContent = '🎤';
+  // Populate header display
+  var m = M_STATE.current;
+  var sd = document.getElementById('mrSubjectDisplay');
+  var sp = document.getElementById('mrProjectDisplay');
+  var sdt = document.getElementById('mrDateDisplay');
+  var spl = document.getElementById('mrPlaceDisplay');
+  if (sd) sd.textContent = m.subject || '—';
+  if (sp) sp.textContent = m.project ? '📋 ' + m.project : '';
+  if (sdt) sdt.textContent = m.date ? '📅 ' + m.date : '';
+  if (spl) spl.textContent = m.place ? '📍 ' + m.place : '';
   showScreen('screenMeetingRecord');
 }
 
@@ -1224,53 +1250,52 @@ function startMeetingRecording() {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SR) { toast('🎤 Speech recognition not supported — type notes manually'); return; }
 
-  function createRecognizer() {
-    const r = new SR();
-    r.continuous = true;        // Keep listening without stopping
-    r.interimResults = true;    // Show words as they're spoken
-    r.maxAlternatives = 1;
-    r.lang = 'en-GB';
-    return r;
-  }
+  const r = new SR();
+  r.continuous     = true;
+  r.interimResults = false;   // finals only — prevents duplicate/looping words on restart
+  r.lang           = 'en-GB';
 
-  M_STATE.recognition = createRecognizer();
-
-  M_STATE.recognition.onresult = e => {
-    let interim = '';
-    let newFinal = '';
+  r.onresult = (e) => {
     for (let i = e.resultIndex; i < e.results.length; i++) {
-      e.results[i].isFinal
-        ? (newFinal += e.results[i][0].transcript + ' ')
-        : (interim += e.results[i][0].transcript);
+      if (e.results[i].isFinal) {
+        M_STATE.transcript += e.results[i][0].transcript + ' ';
+      }
     }
-    if (newFinal) M_STATE.transcript += newFinal;
-    document.getElementById('meetTranscriptBox').textContent =
-      M_STATE.transcript + (interim ? '…' + interim : '');
+    document.getElementById('meetTranscriptBox').textContent = M_STATE.transcript;
   };
 
-  // Named restart handler — arrow functions don't have arguments.callee
-  function meetOnEnd() {
+  r.onend = () => {
+    // Recognizer stopped naturally (timeout, network, etc.)
+    // Only restart if user hasn't explicitly stopped
     if (M_STATE.isRecording) {
-      M_STATE.recognition = createRecognizer();
-      M_STATE.recognition.onresult = M_STATE._onresult;
-      M_STATE.recognition.onend = meetOnEnd;
-      M_STATE.recognition.onerror = M_STATE._onerror;
-      try { M_STATE.recognition.start(); } catch(e) {}
+      document.getElementById('meetVoiceState').textContent = 'Reconnecting…';
+      setTimeout(() => {
+        if (M_STATE.isRecording) {
+          try {
+            M_STATE.recognition = new SR();
+            M_STATE.recognition.continuous     = true;
+            M_STATE.recognition.interimResults = false;
+            M_STATE.recognition.lang           = 'en-GB';
+            M_STATE.recognition.onresult       = r.onresult;
+            M_STATE.recognition.onend          = r.onend;
+            M_STATE.recognition.onerror        = r.onerror;
+            M_STATE.recognition.start();
+            document.getElementById('meetVoiceState').textContent = 'Recording all voices…';
+          } catch(err) {
+            stopMeetingRecording();
+          }
+        }
+      }, 300);
     }
-  }
-  // Stash handlers so the restart closure can reattach them
-  M_STATE._onresult = M_STATE.recognition.onresult;
-
-  // Auto-restart if browser stops — keeps capturing all voices
-  M_STATE.recognition.onend = meetOnEnd;
-
-  M_STATE.recognition.onerror = (e) => {
-    // Ignore no-speech errors — just let onend restart naturally
-    if (e.error !== 'no-speech') stopMeetingRecording();
   };
-  M_STATE._onerror = M_STATE.recognition.onerror;
 
-  M_STATE.recognition.start();
+  r.onerror = (e) => {
+    if (e.error === 'no-speech' || e.error === 'aborted') return;
+    stopMeetingRecording();
+  };
+
+  M_STATE.recognition = r;
+  r.start();
   M_STATE.isRecording = true;
   document.getElementById('meetMicBtn').classList.add('recording');
   document.getElementById('meetMicBtn').textContent = '⏹';
@@ -1498,46 +1523,107 @@ function exportMeetingPDF() {
   if (!m) { toast('⚠ No meeting data'); return; }
 
   const date = m.date || new Date().toLocaleDateString('en-GB');
+  const logoImg = LOGO_DATA;
+
   const atRows = (m.attendees||[]).map(a =>
-    `<tr><td style="padding:4pt 6pt;border:1px solid #ddd;">${a.name||''}</td>
-         <td style="padding:4pt 6pt;border:1px solid #ddd;">Howard Humphreys</td>
-         <td style="padding:4pt 6pt;border:1px solid #ddd;">${a.dept||''}</td></tr>`
+    `<tr><td style="padding:5pt 7pt;border:1px solid #dde3ed;">${a.name||''}</td>
+         <td style="padding:5pt 7pt;border:1px solid #dde3ed;">Howard Humphreys</td>
+         <td style="padding:5pt 7pt;border:1px solid #dde3ed;">${a.dept||''}</td></tr>`
   ).join('');
-  const agendaItems = (m.agenda||[]).map((a,i) => `<li>${a}</li>`).join('');
-  const notes = document.getElementById('meetAiText') ? document.getElementById('meetAiText').textContent : (m.rawTranscript||'');
+
+  const agendaItems = (m.agenda||[]).map((a,i) =>
+    `<tr style="${i%2===0?'':'background:#f7f5fd;'}">
+       <td style="padding:5pt 7pt;border:1px solid #dde3ed;text-align:center;color:#3d2c8d;font-weight:bold;">${i+1}</td>
+       <td style="padding:5pt 7pt;border:1px solid #dde3ed;">${a}</td>
+     </tr>`
+  ).join('');
+
+  const notes = (m.formattedNotes || m.transcript || '').trim() || 'No notes recorded.';
 
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
   <style>
-    body { font-family: Arial, sans-serif; font-size: 10pt; margin: 2cm; color: #222; }
-    h1 { font-size: 14pt; color: #3d2c8d; border-bottom: 2px solid #3d2c8d; padding-bottom: 4pt; }
-    h2 { font-size: 11pt; color: #3d2c8d; margin-top: 16pt; }
-    table { width: 100%; border-collapse: collapse; font-size: 9pt; margin-bottom: 12pt; }
-    th { background: #3d2c8d; color: #fff; padding: 5pt 6pt; text-align: left; }
-    td { border: 1px solid #ccc; padding: 4pt 6pt; }
-    .meta td:first-child { background: #ede9f8; font-weight: bold; width: 35%; }
-    pre { white-space: pre-wrap; font-family: Arial, sans-serif; font-size: 9pt; line-height: 1.6; }
-    .footer { margin-top: 20pt; font-size: 8pt; color: #888; border-top: 1px solid #ddd; padding-top: 6pt; }
+    @page { size: A4; margin: 2cm 2cm 2cm 2cm; }
+    body { font-family: Arial, Helvetica, sans-serif; font-size: 10pt; color: #333; margin: 0; padding: 0; }
+    .cover { position: relative; width: 100%; min-height: 26cm; page-break-after: always; overflow: hidden; box-sizing: border-box; }
+    .arc1 { position:absolute;top:-60px;right:-60px;width:220px;height:220px;border-radius:50%;background:#49499F;opacity:0.18; }
+    .arc2 { position:absolute;top:-30px;right:-30px;width:160px;height:160px;border-radius:50%;background:#49499F;opacity:0.22; }
+    .arc3 { position:absolute;bottom:-60px;left:-60px;width:240px;height:240px;border-radius:50%;background:#49499F;opacity:0.18; }
+    .arc4 { position:absolute;bottom:-30px;left:-30px;width:175px;height:175px;border-radius:50%;background:#49499F;opacity:0.22; }
+    .cover-body { padding: 3cm 2cm 2cm 2cm; text-align: center; }
+    .cover-kw { font-size:14pt;font-weight:bold;color:#49499F;letter-spacing:1pt;margin:0 0 4pt 0; }
+    .cover-sub { font-size:9pt;color:#888;margin:0 0 2cm 0; }
+    .cover-title { font-size:22pt;font-weight:bold;color:#1F3864;margin:0 0 12pt 0;line-height:1.2; }
+    .cover-type { font-size:13pt;font-weight:bold;color:#2E75B6;letter-spacing:0.5pt;margin:0 0 2cm 0; }
+    .cover-date { font-size:10pt;color:#555;margin:0; }
+    .cover-foot { position:absolute;bottom:1.5cm;left:2cm;right:2cm;display:flex;justify-content:space-between;align-items:center; }
+    .cover-foot img { height:44px; }
+    .cover-foot-txt { text-align:right;font-size:7pt;color:#888; }
+    h2 { font-size:12pt;font-weight:bold;color:#1F3864;border-bottom:1.5pt solid #2E75B6;padding-bottom:3pt;margin:18pt 0 6pt 0; }
+    table { width:100%;border-collapse:collapse;font-size:9pt;margin-bottom:14pt; }
+    th { background:#1F3864;color:#fff;padding:5pt 7pt;text-align:left;font-size:9pt; }
+    td { padding:5pt 7pt;border:1px solid #dde3ed;vertical-align:top; }
+    .meta td:first-child { background:#ede9f8;font-weight:bold;width:32%;color:#3d2c8d; }
+    .notes-box { background:#f7f5fd;border:1pt solid #9b8ecf;border-radius:4pt;padding:12pt;font-size:9.5pt;line-height:1.7;white-space:pre-wrap; }
+    .footer { margin-top:24pt;font-size:7.5pt;color:#888;border-top:1pt solid #ccc;padding-top:5pt; }
   </style>
   </head><body>
-  <h1>MEETING MINUTES — ${m.subject||''}</h1>
+
+  <!-- COVER PAGE -->
+  <div class="cover">
+    <div class="arc1"></div><div class="arc2"></div>
+    <div class="arc3"></div><div class="arc4"></div>
+    <div class="cover-body">
+      <p class="cover-kw">HOWARD HUMPHREYS (EAST AFRICA) LIMITED</p>
+      <p class="cover-sub">Consulting Engineers</p>
+      <p class="cover-title">${m.subject || 'Meeting'}</p>
+      <p class="cover-type">MEETING MINUTES</p>
+      <p class="cover-date">${date}</p>
+    </div>
+    <div class="cover-foot">
+      <img src="${logoImg}" alt="HH Logo">
+      <div class="cover-foot-txt">
+        <div>Meeting No. ${m.no || '—'} &nbsp;|&nbsp; ${m.project || ''}</div>
+        <div>${m.place || ''}</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MEETING DETAILS -->
+  <h2>Meeting Details</h2>
   <table class="meta">
-    <tr><td>Project</td><td>${m.project||''}</td></tr>
-    <tr><td>Meeting No.</td><td>${m.no||''}</td></tr>
+    <tr><td>Project</td><td>${m.project||'—'}</td></tr>
+    <tr><td>Subject</td><td>${m.subject||'—'}</td></tr>
+    <tr><td>Meeting No.</td><td>${m.no||'—'}</td></tr>
     <tr><td>Date &amp; Time</td><td>${date}</td></tr>
-    <tr><td>Meeting Place</td><td>${m.place||''}</td></tr>
-    <tr><td>Minutes By</td><td>${m.minutesBy||''}</td></tr>
+    <tr><td>Meeting Place</td><td>${m.place||'—'}</td></tr>
+    <tr><td>Minutes By</td><td>${m.minutesBy||'—'}</td></tr>
   </table>
+
   <h2>Attendees</h2>
-  <table><thead><tr><th>Name</th><th>Representing</th><th>Department</th></tr></thead>
-  <tbody>${atRows}</tbody></table>
-  ${agendaItems ? `<h2>Agenda</h2><ol>${agendaItems}</ol>` : ''}
-  <h2>Minutes / Notes</h2>
-  <pre>${notes}</pre>
-  <div class="footer">Howard Humphreys (East Africa) Limited — Meeting Minutes — ${date} — CONFIDENTIAL</div>
+  <table>
+    <thead><tr><th>Name</th><th>Representing</th><th>Department</th></tr></thead>
+    <tbody>${atRows || '<tr><td colspan="3" style="text-align:center;color:#888;font-style:italic;">No attendees recorded</td></tr>'}</tbody>
+  </table>
+
+  ${agendaItems ? `
+  <h2>Agenda</h2>
+  <table>
+    <thead><tr><th style="width:6%;text-align:center;">#</th><th>Item</th></tr></thead>
+    <tbody>${agendaItems}</tbody>
+  </table>` : ''}
+
+  <h2>Minutes &amp; Action Points</h2>
+  <div class="notes-box">${notes}</div>
+
+  <div class="footer">Howard Humphreys (East Africa) Limited &nbsp;|&nbsp; Meeting Minutes &nbsp;|&nbsp; ${m.project||''} &nbsp;|&nbsp; ${date} &nbsp;|&nbsp; CONFIDENTIAL</div>
   </body></html>`;
 
-  const filename = 'HH-Meeting-Notes-' + (m.subject||'Minutes').replace(/[^a-zA-Z0-9]/g,'_');
-  _exportPDF(html, filename);
+  var win = window.open('', '_blank', 'width=900,height=700');
+  if (!win) { toast('⚠ Allow pop-ups to export PDF'); return; }
+  win.document.write(html);
+  win.document.close();
+  win.onload = function() { setTimeout(function() { win.focus(); win.print(); }, 500); };
+  toast('📄 Print dialog opening — choose "Save as PDF"');
 }
 
 function toast(msg, ms = 2500) {
@@ -1919,19 +2005,64 @@ async function saveIssue() {
 
 // ANNOTATION
 let annCtx;
+// Named handler refs so we can removeEventListener cleanly
+function _annMouseDown(e){ annStart(e); }
+function _annMouseMove(e){ annMove(e); }
+function _annMouseUp(){ annEnd(); }
+function _annTouchStart(e){ e.preventDefault(); annStart(e.touches[0]); }
+function _annTouchMove(e){ e.preventDefault(); annMove(e.touches[0]); }
+function _annTouchEnd(e){ e.preventDefault(); annEnd(); }
+
 function openAnnotate(idx) {
-  S.editingIssue = idx; const iss = S.projects[S.proj].issues[idx]; if (!iss.photo) return;
+  S.editingIssue = idx;
+  const iss = S.projects[S.proj].issues[idx];
+  if (!iss.photo) return;
   showScreen('screenAnnotate');
-  const img = document.getElementById('annotationImg'); const canvas = document.getElementById('annotationCanvas');
+
+  // Wire tool buttons with touchend so they fire instantly on mobile
+  document.querySelectorAll('#screenAnnotate .tool-btn').forEach(function(btn) {
+    btn.ontouchend = function(e) {
+      e.preventDefault();
+      var t = btn.getAttribute('data-tool');
+      if (t) setTool(t, btn);
+    };
+  });
+  document.querySelectorAll('#screenAnnotate .color-dot').forEach(function(dot) {
+    dot.ontouchend = function(e) {
+      e.preventDefault();
+      var col = dot.getAttribute('data-color');
+      if (col) setAnnColor(col, dot);
+    };
+  });
+
+  const img = document.getElementById('annotationImg');
+  const canvas = document.getElementById('annotationCanvas');
+
+  // Remove old listeners before re-adding
+  canvas.removeEventListener('mousedown', _annMouseDown);
+  canvas.removeEventListener('mousemove', _annMouseMove);
+  canvas.removeEventListener('mouseup',   _annMouseUp);
+  canvas.removeEventListener('touchstart',_annTouchStart);
+  canvas.removeEventListener('touchmove', _annTouchMove);
+  canvas.removeEventListener('touchend',  _annTouchEnd);
+
   img.onload = () => {
-    canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
-    const newC = canvas.cloneNode(true); canvas.parentNode.replaceChild(newC, canvas);
-    const c = document.getElementById('annotationCanvas'); annCtx = c.getContext('2d'); S.annHistory = [];
-    if (iss.annotations) { const prev = new Image(); prev.onload = () => annCtx.drawImage(prev,0,0,c.width,c.height); prev.src = iss.annotations; }
-    c.addEventListener('mousedown', e => annStart(e)); c.addEventListener('mousemove', e => annMove(e)); c.addEventListener('mouseup', () => annEnd());
-    c.addEventListener('touchstart', e => { e.preventDefault(); annStart(e.touches[0]); }, {passive:false});
-    c.addEventListener('touchmove', e => { e.preventDefault(); annMove(e.touches[0]); }, {passive:false});
-    c.addEventListener('touchend', e => { e.preventDefault(); annEnd(); }, {passive:false});
+    canvas.width  = img.naturalWidth;
+    canvas.height = img.naturalHeight;
+    annCtx = canvas.getContext('2d');
+    S.annHistory = [];
+    annCtx.clearRect(0, 0, canvas.width, canvas.height);
+    if (iss.annotations) {
+      const prev = new Image();
+      prev.onload = () => annCtx.drawImage(prev, 0, 0, canvas.width, canvas.height);
+      prev.src = iss.annotations;
+    }
+    canvas.addEventListener('mousedown',  _annMouseDown);
+    canvas.addEventListener('mousemove',  _annMouseMove);
+    canvas.addEventListener('mouseup',    _annMouseUp);
+    canvas.addEventListener('touchstart', _annTouchStart, {passive:false});
+    canvas.addEventListener('touchmove',  _annTouchMove,  {passive:false});
+    canvas.addEventListener('touchend',   _annTouchEnd,   {passive:false});
   };
   img.src = iss.photo;
 }
