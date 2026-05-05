@@ -572,10 +572,10 @@
       <span style="font-size:13px;">No photo yet</span>
     </div>
     <div style="display:flex;gap:8px;margin-top:8px;">
-      <button class="btn btn-secondary" style="flex:1;font-size:13px;">📷 Take Photo</button>
+      <button class="btn btn-secondary" id="btnObsCamera" style="flex:1;font-size:13px;">📷 Take Photo</button>
       <label class="btn btn-secondary" style="flex:1;font-size:13px;text-align:center;cursor:pointer;">
         🖼 Upload
-        <input type="file" accept="image/*" style="display:none;">
+        <input type="file" accept="image/*" id="obsPhotoUploadInput" style="display:none;">
       </label>
     </div>
     <p style="font-size:11px;color:#9ca3af;margin-top:5px;line-height:1.4;">📷 Camera &amp; 📍 Location access lets you geotag photos automatically. Tap <em>Allow</em> if your browser asks — no data leaves the device.</p>
@@ -754,8 +754,8 @@
     <div class="project-stripe-meta" id="pMeta"></div>
   </div>
   <div class="action-row">
-    <button class="btn btn-primary" style="flex:1;">📷 Add Issue</button>
-    <button class="btn btn-secondary">📄 Export PDF</button>
+    <button class="btn btn-primary" id="btnAddIssue" style="flex:1;">📷 Add Issue</button>
+    <button class="btn btn-secondary" id="btnExportModal">📄 Export PDF</button>
   </div>
   <div class="tabs">
     <button class="tab active" data-tab="issues">Issues</button>
@@ -4619,15 +4619,8 @@ function exportChecklist(format) {
   '</div></body></html>';
 
   if (format === 'pdf') {
-    // Use print window — avoids the jsPDF zoom/cut issue on HTML tables
-    var win = window.open('', '_blank', 'width=900,height=700');
-    if (!win) { toast('⚠ Please allow pop-ups to export PDF'); return; }
-    win.document.write(html);
-    win.document.close();
-    win.onload = function() {
-      setTimeout(function() { win.focus(); win.print(); }, 400);
-    };
-    toast('📄 Print dialog opening — choose "Save as PDF"');
+    var filename = 'HH_Checklist_' + (p.name||'Recon').replace(/[^a-zA-Z0-9]/g,'_') + '_' + new Date().toISOString().slice(0,10);
+    _exportPDF(html, filename);
   } else {
     var blob = new Blob([html], {type:'application/msword'});
     var a = document.createElement('a');
