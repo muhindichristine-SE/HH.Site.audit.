@@ -467,7 +467,7 @@
         📷 Replace Photo
         <input type="file" accept="image/*" id="editPhotoInput" style="display:none;">
       </label>
-      <button class="btn btn-secondary" style="flex:1;font-size:13px;">✏️ Annotate</button>
+      <button class="btn btn-secondary" id="btnAnnotateEdit" style="flex:1;font-size:13px;">✏️ Annotate</button>
     </div>
   </div>
   <div class="gps-chip" id="editGpsChip" style="margin-bottom:12px;">📍 —</div>
@@ -848,7 +848,7 @@
   <div style="background:var(--hh-purple-xlight);border:1px solid rgba(61,44,141,0.2);border-radius:var(--radius);padding:12px 14px;margin-bottom:12px;font-size:13px;color:var(--hh-purple-dark);">
     ✅ When happy with annotations, tap the button below to save them to the issue.
   </div>
-  <button class="btn btn-primary btn-block" style="font-size:16px;padding:14px;">💾 Save Annotations to Issue</button>
+  <button class="btn btn-primary btn-block" id="btnSaveSiteAnnotation" style="font-size:16px;padding:14px;">💾 Save Annotations to Issue</button>
 </div>
 
 <!-- EXPORT MODAL -->
@@ -878,9 +878,9 @@
       <div class="form-group"><label>Approved</label><input id="ex_approved" type="text" placeholder="Initials"></div>
     </div>
     <div style="display:flex;gap:10px;margin-top:8px;">
-      <button class="btn btn-secondary" style="flex:1;">Cancel</button>
-      <button class="btn btn-primary" style="flex:2;">📄 PDF</button>
-      <button class="btn btn-secondary" style="flex:2;border-color:#2b579a;color:#2b579a;">📝 Word</button>
+      <button class="btn btn-secondary" id="btnCancelExport" style="flex:1;">Cancel</button>
+      <button class="btn btn-primary" id="btnExportPDF" style="flex:2;">📄 PDF</button>
+      <button class="btn btn-secondary" id="btnAuditExportWord" style="flex:2;border-color:#2b579a;color:#2b579a;">📝 Word</button>
     </div>
   </div>
 </div>
@@ -1010,30 +1010,56 @@ async function reconcileStorage() {
       }
     }
 
-    // Pass 2 — null broken photo/annotation references (in metadata but missing from IDB)
+    // Pass 2 — fix broken references: migrate legacy base64 data URLs to IDB,
+    // only null references that are truly broken (no data URL in memory)
     var needsSave = false;
+    var migrations = [];
     (S.projects || []).forEach(function(p) {
       (p.issues || []).forEach(function(iss) {
         if (iss.id) {
-          if (iss.photo && !idbSet.has('iss_' + iss.id)) {
-            console.log('[reconcile] cleared broken photo ref:', 'iss_' + iss.id);
-            iss.photo = null; needsSave = true;
+          var issKey = 'iss_' + iss.id;
+          var annKey = 'ann_' + iss.id;
+          if (iss.photo && !idbSet.has(issKey)) {
+            if (typeof iss.photo === 'string' && iss.photo.startsWith('data:')) {
+              console.log('[reconcile] migrating legacy photo to IDB:', issKey);
+              migrations.push(_savePhoto(issKey, iss.photo));
+            } else {
+              console.log('[reconcile] cleared broken photo ref:', issKey);
+              iss.photo = null; needsSave = true;
+            }
           }
-          if (iss.annotations && !idbSet.has('ann_' + iss.id)) {
-            console.log('[reconcile] cleared broken annotation ref:', 'ann_' + iss.id);
-            iss.annotations = null; needsSave = true;
+          if (iss.annotations && !idbSet.has(annKey)) {
+            if (typeof iss.annotations === 'string' && iss.annotations.startsWith('data:')) {
+              console.log('[reconcile] migrating legacy annotation to IDB:', annKey);
+              migrations.push(_savePhoto(annKey, iss.annotations));
+            } else {
+              console.log('[reconcile] cleared broken annotation ref:', annKey);
+              iss.annotations = null; needsSave = true;
+            }
           }
         }
       });
       (p.days || []).forEach(function(d) {
         (d.observations || []).forEach(function(ob) {
           if (ob.id && ob.photo && !idbSet.has('obs_' + ob.id)) {
-            console.log('[reconcile] cleared broken obs photo ref:', 'obs_' + ob.id);
-            ob.photo = null; needsSave = true;
+            var obKey = 'obs_' + ob.id;
+            if (typeof ob.photo === 'string' && ob.photo.startsWith('data:')) {
+              console.log('[reconcile] migrating legacy obs photo to IDB:', obKey);
+              migrations.push(_savePhoto(obKey, ob.photo));
+            } else {
+              console.log('[reconcile] cleared broken obs photo ref:', obKey);
+              ob.photo = null; needsSave = true;
+            }
           }
         });
       });
     });
+
+    if (migrations.length > 0) {
+      await Promise.all(migrations);
+      console.log('[reconcile] migrated ' + migrations.length + ' legacy photo(s) to IDB');
+      needsSave = true;
+    }
 
     if (needsSave) { try { await save(); } catch(e) { console.warn('[reconcile] save after cleanup failed:', e); } }
     if (cleaned > 0 || needsSave) console.log('[reconcile] complete — ' + cleaned + ' orphan(s) removed, refs fixed: ' + needsSave);
@@ -2997,9 +3023,9 @@ function bindEvents() {
   onQ('#btnSaveSiteAnnotation', 'click', saveSiteAnnotation);
 
   // ── Export modal ──────────────────────────────────────────
-  onQ('#btnCancelExport', 'click', closeExportModal);
-  onQ('#btnExportPDF',    'click', exportPDF);
-  onQ('#btnExportWord',   'click', exportWord);
+  onQ('#btnCancelExport',      'click', closeExportModal);
+  onQ('#btnExportPDF',         'click', exportPDF);
+  onQ('#btnAuditExportWord',   'click', exportWord);
 
   // ── Dynamic content — event delegation ───────────────────
   // Issue cards (site audit)
