@@ -1,19 +1,22 @@
 # HH Site Audit
 
-Field data collection and inspection reporting tool for **Howard Humphreys (East Africa) Limited**.
+### The field inspection and pre-bid reconnaissance tool for Howard Humphreys (East Africa) Limited.
 
-Built for the KeNHA/2940/2026 corridor — Neissuit–Salgaa–Elburgon–Turi–Muchorwe–Langwenda–Kamwaura–Embomoss (133 km).
+HH Site Audit is a specialized platform designed to capture, annotate, and report field observations during site inspections and pre-bid reconnaissance surveys within the roads and infrastructure sector.
 
-## Features
+---
 
-- **Pre-Bid Reconnaissance** — field observation capture with GPS, photos, and AI-assisted reporting
-- **Site Audit** — issue logging, photo annotation, PDF/Word export
-- **Meeting Minutes** — voice-recorded transcription with AI formatting
+## 🚀 Features
 
-## Usage
+- **Pre-Bid Reconnaissance** — structured field observation capture with GPS tagging, photo documentation, complexity ratings, and AI-assisted narrative report generation
+- **Site Audit** — issue logging with photo annotation tools (arrow, circle, box, pen, eraser), severity classification, and PDF/Word export
+- **Meeting Minutes** — live voice transcription via SpeechRecognition API with AI formatting and Word/PDF export
+- **Offline-First** — all data stored locally on device via localStorage and IndexedDB; works without internet
+- **AI-Assisted Reporting** — Claude API integration for narrative generation and meeting note formatting
+- **Storage Integrity** — automatic reconciliation on boot: orphan blob cleanup and legacy photo migration to IndexedDB
 
-Open `hh-site-audit.html` in any modern browser. All data is stored locally on device.
+---
 
-## Client
+## 🛠️ Usage
 
-Howard Humphreys Consulting Engineers
+No installation required. Open `hh-site-audit.html` in any modern browser.
